@@ -1,0 +1,71 @@
+# file generated with AI assistance: Claude Code - 2025-11-22
+
+services:
+    _defaults:
+        autowire: false
+        autoconfigure: false
+        public: false
+
+    # UUID Resolver Service
+    Dmstr\ApiPlatformUtils\Service\UuidResolver:
+        public: true
+        arguments:
+            $entityManager: '@doctrine.orm.entity_manager'
+
+    # Credential Encryption Service
+    Dmstr\ApiPlatformUtils\Service\CredentialEncryption:
+        public: true
+        arguments:
+            $encryptionKey: '%dmstr_api_platform_utils.credential_encryption.key%'
+
+    # Relation Field Schema Decorator (OpenAPI enhancement)
+    Dmstr\ApiPlatformUtils\OpenApi\RelationFieldSchemaDecorator:
+        decorates: 'api_platform.json_schema.schema_factory'
+        arguments:
+            $decorated: '@.inner'
+            $entityManager: '@doctrine.orm.entity_manager'
+            $resourceMetadataFactory: '@api_platform.metadata.resource.metadata_collection_factory'
+            $logger: '@logger'
+            $apiPrefix: '%dmstr_api_platform_utils.relation_field_decorator.api_prefix%'
+            $labelPropertyCandidates: '%dmstr_api_platform_utils.relation_field_decorator.label_property_candidates%'
+        decoration_priority: 10
+        tags: ['monolog.logger']
+
+    # Hydra Operations Subscriber
+    Dmstr\ApiPlatformUtils\EventSubscriber\AddHydraOperationsSubscriber:
+        arguments:
+            $resourceMetadataFactory: '@api_platform.metadata.resource.metadata_collection_factory'
+            $apiPrefix: '%dmstr_api_platform_utils.hydra_operations.api_prefix%'
+        tags:
+            - { name: kernel.event_subscriber }
+
+    # Hydra Documentation Subscriber (patches /api/docs.jsonld)
+    Dmstr\ApiPlatformUtils\EventSubscriber\HydraDocumentationSubscriber:
+        arguments:
+            $resourceNameCollectionFactory: '@api_platform.metadata.resource.name_collection_factory'
+            $resourceMetadataFactory: '@api_platform.metadata.resource.metadata_collection_factory'
+            $apiPrefix: '%dmstr_api_platform_utils.hydra_documentation.api_prefix%'
+        tags:
+            - { name: kernel.event_subscriber }
+
+    # Custom Operation Hydra Factory (auto-detect /resource/<verb> and
+    # /resource/{id}/<verb> URIs and mark them with @type=schema:Action).
+    # Priority 100 runs after uri_template (500) and operation_name (200).
+    Dmstr\ApiPlatformUtils\Metadata\CustomOperationHydraFactory:
+        decorates: 'api_platform.metadata.resource.metadata_collection_factory'
+        decoration_priority: 100
+        arguments:
+            $decorated: '@.inner'
+            $apiPrefix: '%dmstr_api_platform_utils.custom_operation_hydra.api_prefix%'
+
+    # IriReferenceArray feature: shared mapper service (stateless cache)
+    Dmstr\ApiPlatformUtils\Service\IriReferenceArrayMapper:
+        autowire: true
+        public: true
+
+    # IriReferenceArray feature: Doctrine postLoad listener — turns stored
+    # UUIDs into full IRIs after hydration.
+    Dmstr\ApiPlatformUtils\EventListener\IriReferenceArrayDoctrineListener:
+        autowire: true
+        tags:
+            - { name: doctrine.event_listener, event: postLoad }

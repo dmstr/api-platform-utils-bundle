@@ -1,0 +1,18 @@
+# file generated with AI assistance: Claude Code - 2026-05-09 01:00:00 UTC
+
+services:
+    _defaults:
+        autowire: false
+        autoconfigure: false
+        public: false
+
+    # Decorate the Doctrine ORM item provider so that {id} URI variables
+    # are resolved as full OR partial UUIDs project-wide.
+    Dmstr\ApiPlatformUtils\State\PartialUuidItemProvider:
+        decorates: 'api_platform.doctrine.orm.state.item_provider'
+        arguments:
+            $inner: '@.inner'
+            $uuidResolver: '@Dmstr\ApiPlatformUtils\Service\UuidResolver'
+            $logger: '@logger'
+        tags:
+            - { name: monolog.logger, channel: 'api_platform' }

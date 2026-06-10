@@ -1,0 +1,47 @@
+{
+    "name": "dmstr/api-platform-utils-bundle",
+    "description": "Generic utilities for API Platform projects: UUID resolver, credential encryption, OpenAPI enhancements, Hydra operations, IriReferenceArray autocomplete, DB-JSON CLI tools, JWT security decorator.",
+    "type": "symfony-bundle",
+    "license": "MIT",
+    "keywords": [
+        "symfony",
+        "api-platform",
+        "openapi",
+        "hydra",
+        "uuid",
+        "doctrine",
+        "encryption",
+        "utilities"
+    ],
+    "authors": [
+        {
+            "name": "diemeisterei GmbH",
+            "homepage": "https://diemeisterei.de"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "ext-sodium": "*",
+        "symfony/framework-bundle": "^7.0",
+        "symfony/dependency-injection": "^7.0",
+        "symfony/config": "^7.0",
+        "symfony/http-kernel": "^7.0",
+        "symfony/event-dispatcher": "^7.0",
+        "symfony/uid": "^7.0",
+        "api-platform/core": "^3.0|^4.0",
+        "doctrine/orm": "^2.0|^3.0",
+        "psr/log": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Dmstr\\ApiPlatformUtils\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Dmstr\\ApiPlatformUtils\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
