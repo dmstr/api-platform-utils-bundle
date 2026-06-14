@@ -1,0 +1,17 @@
+# file generated with AI assistance: Claude Code - 2026-06-13 23:14:54 UTC
+# CLI-only test runner for this library — no MySQL/FPM required.
+# Usage (on host):
+#   docker compose run --rm php
+# Runs `composer install` then PHPUnit against tests/.
+services:
+  php:
+    build:
+      dockerfile_inline: |
+        FROM php:8.4-cli-alpine
+        COPY --from=mlocati/php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
+        RUN install-php-extensions sodium intl
+        COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+    working_dir: /repo
+    volumes:
+      - .:/repo
+    command: sh -c "composer install --no-interaction --no-progress && vendor/bin/phpunit"
