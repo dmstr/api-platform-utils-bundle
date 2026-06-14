@@ -32,6 +32,9 @@
         "doctrine/orm": "^2.0|^3.0",
         "psr/log": "^3.0"
     },
+    "require-dev": {
+        "phpunit/phpunit": "^12.0"
+    },
     "autoload": {
         "psr-4": {
             "Dmstr\\ApiPlatformUtils\\": "src/"
