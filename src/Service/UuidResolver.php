@@ -5,6 +5,8 @@ declare(strict_types=1);
 
 namespace Dmstr\ApiPlatformUtils\Service;
 
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\Platforms\PostgreSQLPlatform;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\Uid\Uuid;
 
@@ -59,17 +61,20 @@ class UuidResolver
     }
 
     /**
-     * Find entity with binary UUID storage using native SQL
+     * Find entity with UUID storage using native SQL.
      *
-     * Uses HEX(id) to convert binary UUID to string for LIKE matching
+     * The Symfony `uuid` type stores the value differently per platform — a
+     * BINARY(16) on MySQL/MariaDB, a native `uuid` column on PostgreSQL — so the
+     * partial-prefix match must be built per platform (see {@see buildPartialUuidSql}).
      */
     private function findByPartialBinaryUuid(string $entityClass, string $partialId): ?object
     {
         $metadata = $this->entityManager->getClassMetadata($entityClass);
         $tableName = $metadata->getTableName();
+        $idColumn = $metadata->getColumnName('id');
 
         $conn = $this->entityManager->getConnection();
-        $sql = "SELECT BIN_TO_UUID(id) as uuid_str FROM {$tableName} WHERE LOWER(HEX(id)) LIKE :partialId LIMIT 2";
+        $sql = self::buildPartialUuidSql($conn->getDatabasePlatform(), $tableName, $idColumn);
         $stmt = $conn->prepare($sql);
         $stmt->bindValue('partialId', strtolower(str_replace('-', '', $partialId)) . '%');
         $resultSet = $stmt->executeQuery();
@@ -87,6 +92,35 @@ class UuidResolver
 
         $fullUuid = Uuid::fromString($uuids[0]['uuid_str']);
         return $this->entityManager->getRepository($entityClass)->find($fullUuid);
+    }
+
+    /**
+     * Build the native partial-UUID lookup SQL for the given platform.
+     *
+     * Both branches select the canonical hyphenated UUID string as `uuid_str`
+     * and match the caller's hyphen-stripped, lower-cased hex prefix:
+     *  - PostgreSQL: the column is a native `uuid`; cast to text and strip the
+     *    hyphens (`REPLACE(LOWER(id::text), '-', '')`).
+     *  - MySQL/MariaDB: the column is BINARY(16); `HEX()` yields the 32-char hex
+     *    and `BIN_TO_UUID()` reads it back as a canonical string.
+     *
+     * Public + static so it can be unit-tested per platform without a database.
+     */
+    public static function buildPartialUuidSql(AbstractPlatform $platform, string $tableName, string $idColumn): string
+    {
+        if ($platform instanceof PostgreSQLPlatform) {
+            return sprintf(
+                "SELECT %2\$s::text AS uuid_str FROM %1\$s WHERE REPLACE(LOWER(%2\$s::text), '-', '') LIKE :partialId LIMIT 2",
+                $tableName,
+                $idColumn
+            );
+        }
+
+        return sprintf(
+            'SELECT BIN_TO_UUID(%2$s) AS uuid_str FROM %1$s WHERE LOWER(HEX(%2$s)) LIKE :partialId LIMIT 2',
+            $tableName,
+            $idColumn
+        );
     }
 
     /**
