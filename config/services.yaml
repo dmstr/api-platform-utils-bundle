@@ -18,6 +18,22 @@ services:
         arguments:
             $encryptionKey: '%dmstr_api_platform_utils.credential_encryption.key%'
 
+    # CLI: generic entity table export/import as JSON (schema-aware dump with
+    # _meta + records) and encryption key generation. Tagged explicitly —
+    # this file opts out of autoconfigure.
+    Dmstr\ApiPlatformUtils\Command\DbExportJsonCommand:
+        arguments:
+            $entityManager: '@doctrine.orm.entity_manager'
+        tags: ['console.command']
+
+    Dmstr\ApiPlatformUtils\Command\DbImportJsonCommand:
+        arguments:
+            $entityManager: '@doctrine.orm.entity_manager'
+        tags: ['console.command']
+
+    Dmstr\ApiPlatformUtils\Command\GenerateEncryptionKeyCommand:
+        tags: ['console.command']
+
     # Relation Field Schema Decorator (OpenAPI enhancement)
     Dmstr\ApiPlatformUtils\OpenApi\RelationFieldSchemaDecorator:
         decorates: 'api_platform.json_schema.schema_factory'
