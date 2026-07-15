@@ -32,6 +32,11 @@ use Symfony\Component\HttpKernel\KernelEvents;
  *    Custom operations are skipped: they are already enriched by
  *    {@see \Dmstr\ApiPlatformUtils\Metadata\CustomOperationHydraFactory}.
  *
+ * 3. Display labels — every supportedClass whose resource declares
+ *    `extraProperties: ['label' => '…']` gets that value as `rdfs:label`.
+ *    UIs use it as the human-readable (later translatable) menu/heading
+ *    text while `hydra:title` (= shortName) remains the technical key.
+ *
  * Runs at low priority so the Hydra documentation is fully serialized before
  * we touch it.
  */
@@ -76,9 +81,14 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
         }
 
         $lookup = $this->buildLookup();
+        $labels = $this->buildLabels();
 
         foreach ($data['hydra:supportedClass'] as &$class) {
             $classShortName = (string) ($class['hydra:title'] ?? '');
+
+            if (isset($labels[$classShortName]) && !isset($class['rdfs:label'])) {
+                $class['rdfs:label'] = $labels[$classShortName];
+            }
 
             if (isset($class['hydra:supportedOperation']) && \is_array($class['hydra:supportedOperation'])) {
                 $candidates = $lookup[$classShortName] ?? [];
@@ -235,6 +245,39 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
                         'routePrefix' => $routePrefix,
                     ];
                 }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Maps resource shortNames to their human-readable display label, taken
+     * from the resource's `extraProperties['label']`. Consumers (e.g.
+     * hrzg/vue-za7-admin-ui) prefer `rdfs:label` over `hydra:title` for menu
+     * and heading text; `hydra:title` (= shortName) stays the technical key
+     * for schema lookups. The label is free text and may later be run
+     * through a translator here without touching the resources.
+     *
+     * @return array<string, string>
+     */
+    private function buildLabels(): array
+    {
+        $out = [];
+        foreach ($this->resourceNameCollectionFactory->create() as $class) {
+            try {
+                $metadata = $this->resourceMetadataFactory->create($class);
+            } catch (\Throwable) {
+                continue;
+            }
+
+            foreach ($metadata as $resource) {
+                $shortName = $resource->getShortName();
+                $label = $resource->getExtraProperties()['label'] ?? null;
+                if (null === $shortName || '' === $shortName || !\is_string($label) || '' === $label) {
+                    continue;
+                }
+                $out[$shortName] ??= $label;
             }
         }
 
