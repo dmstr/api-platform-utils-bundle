@@ -7,7 +7,9 @@ This is a public open-source package maintained under github.com/dmstr.
 ## Language policy
 
 **Everything in this repository is in English** — commit messages, code,
-comments, and documentation. Do not write German here, even though related
+comments, documentation, and all communication about the repository
+(merge/pull request titles and descriptions, code review, issues, and chat
+with the coding assistant). Do not write German here, even though related
 company/customer projects (e.g. the consuming application) use German. These
 packages are public and English-only.
 
