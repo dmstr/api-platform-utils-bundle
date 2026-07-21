@@ -76,6 +76,10 @@ class Configuration implements ConfigurationInterface
                             ->defaultValue(-10)
                             ->info('Event subscriber priority (negative runs after API Platform)')
                         ->end()
+                        ->booleanNode('filter_operations_by_security')
+                            ->defaultTrue()
+                            ->info('Omit operations from hydra:operation whose security expression does not grant access to the current token (requires symfony/security-bundle; operations without a security expression stay visible)')
+                        ->end()
                     ->end()
                 ->end()
 
@@ -105,17 +109,6 @@ class Configuration implements ConfigurationInterface
                         ->scalarNode('api_prefix')
                             ->defaultValue('/api')
                             ->info('API prefix prepended when emitting @id / hydra:uriTemplate on operations')
-                        ->end()
-                    ->end()
-                ->end()
-
-                // Partial UUID Item Provider
-                ->arrayNode('partial_uuid_item_provider')
-                    ->addDefaultsIfNotSet()
-                    ->children()
-                        ->booleanNode('enabled')
-                            ->defaultFalse()
-                            ->info('Decorate the Doctrine ORM item provider so that {id} URI variables are resolved as full OR partial UUIDs project-wide. Convenience layer — full UUIDs still take the fast indexed path. Off by default to avoid surprising existing consumers.')
                         ->end()
                     ->end()
                 ->end()
