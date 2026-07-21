@@ -52,6 +52,9 @@ services:
         arguments:
             $resourceMetadataFactory: '@api_platform.metadata.resource.metadata_collection_factory'
             $apiPrefix: '%dmstr_api_platform_utils.hydra_operations.api_prefix%'
+            # optional — absent without symfony/security-bundle; filtering is skipped then
+            $resourceAccessChecker: '@?api_platform.security.resource_access_checker'
+            $filterOperationsBySecurity: '%dmstr_api_platform_utils.hydra_operations.filter_operations_by_security%'
         tags:
             - { name: kernel.event_subscriber }
 

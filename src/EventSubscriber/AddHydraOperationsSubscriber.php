@@ -1,5 +1,5 @@
 <?php
-// file generated with AI assistance: Claude Code - 2025-11-22
+// file generated with AI assistance: Claude Code - 2025-11-22, updated 2026-07-22
 
 declare(strict_types=1);
 
@@ -7,22 +7,35 @@ namespace Dmstr\ApiPlatformUtils\EventSubscriber;
 
 use ApiPlatform\Metadata\HttpOperation;
 use ApiPlatform\Metadata\Resource\Factory\ResourceMetadataCollectionFactoryInterface;
+use ApiPlatform\Metadata\ResourceAccessCheckerInterface;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
-use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
 
 /**
- * Adds hydra:operation array to JSON-LD item responses
+ * Adds hydra:operation array to JSON-LD item and collection responses
  *
  * This enriches API Platform JSON-LD responses with complete operation metadata,
  * making the API more discoverable and self-documenting.
+ *
+ * Item responses list the item-level operations (URI templates containing
+ * {id}), collection responses list the collection-level operations (create +
+ * custom collection actions).
+ *
+ * When filtering is enabled (default) and API Platform's ResourceAccessChecker
+ * is available, operations whose `security` expression does not grant access
+ * to the current token are omitted — the server advertises only what the
+ * current user may actually execute (HATEOAS). Operations without a `security`
+ * expression stay visible. Responses become user-dependent, so a
+ * `Vary: Authorization` header is emitted whenever filtering is active.
  */
 final class AddHydraOperationsSubscriber implements EventSubscriberInterface
 {
     public function __construct(
         private readonly ResourceMetadataCollectionFactoryInterface $resourceMetadataFactory,
-        private readonly string $apiPrefix = '/api'
+        private readonly string $apiPrefix = '/api',
+        private readonly ?ResourceAccessCheckerInterface $resourceAccessChecker = null,
+        private readonly bool $filterOperationsBySecurity = true,
     ) {
     }
 
@@ -44,15 +57,16 @@ final class AddHydraOperationsSubscriber implements EventSubscriberInterface
             return;
         }
 
-        // Only process GET item operations (not collections)
+        // Only process GET operations
         if ($operation->getMethod() !== 'GET') {
             return;
         }
 
         $uriTemplate = $operation->getUriTemplate();
-        if (!$uriTemplate || !str_contains($uriTemplate, '{id}')) {
+        if (!$uriTemplate) {
             return;
         }
+        $isItemRequest = str_contains($uriTemplate, '{id}');
 
         // Only process JSON-LD content
         $contentType = $response->headers->get('Content-Type');
@@ -66,8 +80,21 @@ final class AddHydraOperationsSubscriber implements EventSubscriberInterface
         }
 
         $data = json_decode($content, true);
-        if (!is_array($data) || !isset($data['@id']) || !isset($data['@type'])) {
+        if (!is_array($data)) {
             return;
+        }
+
+        if ($isItemRequest) {
+            if (!isset($data['@id']) || !isset($data['@type'])) {
+                return;
+            }
+        } else {
+            // Collection responses are typed hydra:Collection (possibly among
+            // other types); skip anything else (e.g. custom GET endpoints).
+            $types = (array) ($data['@type'] ?? []);
+            if (!in_array('hydra:Collection', $types, true)) {
+                return;
+            }
         }
 
         // Get resource class
@@ -77,13 +104,25 @@ final class AddHydraOperationsSubscriber implements EventSubscriberInterface
         }
 
         try {
-            // Get the resource ID from the @id field
-            $resourceId = $data['id'] ?? null;
-            if (!$resourceId) {
-                // Try to extract from @id
-                $atId = $data['@id'] ?? '';
-                if (preg_match('/\/([^\/]+)$/', $atId, $matches)) {
-                    $resourceId = $matches[1];
+            $resourceId = null;
+            $subject = null;
+            if ($isItemRequest) {
+                // Get the resource ID from the @id field
+                $resourceId = $data['id'] ?? null;
+                if (!$resourceId) {
+                    // Try to extract from @id
+                    $atId = $data['@id'] ?? '';
+                    if (preg_match('/\/([^\/]+)$/', $atId, $matches)) {
+                        $resourceId = $matches[1];
+                    }
+                }
+
+                // The loaded entity — API Platform stores the controller
+                // result in the `data` request attribute. Used as `object`
+                // when evaluating operation security expressions.
+                $requestData = $request->attributes->get('data');
+                if (is_object($requestData)) {
+                    $subject = $requestData;
                 }
             }
 
@@ -100,9 +139,14 @@ final class AddHydraOperationsSubscriber implements EventSubscriberInterface
                         continue;
                     }
 
-                    // Only include item operations (not collection operations)
+                    // Item responses advertise item operations, collection
+                    // responses advertise collection operations.
                     $opUriTemplate = $op->getUriTemplate();
-                    if (!$opUriTemplate || !str_contains($opUriTemplate, '{id}')) {
+                    if (!$opUriTemplate || str_contains($opUriTemplate, '{id}') !== $isItemRequest) {
+                        continue;
+                    }
+
+                    if (!$this->isOperationGranted($op, $subject)) {
                         continue;
                     }
 
@@ -164,15 +208,67 @@ final class AddHydraOperationsSubscriber implements EventSubscriberInterface
                 $data['hydra:operation'] = $operations;
                 $response->setContent(json_encode($data));
             }
+
+            // With security filtering active the advertised operations depend
+            // on the current token — mark the response as per-credential for
+            // any shared HTTP cache. Also emitted when all operations were
+            // filtered out (an empty result is user-dependent information too).
+            if ($this->isFilteringActive()) {
+                $vary = $response->getVary();
+                if (!in_array('Authorization', $vary, true)) {
+                    $response->setVary(array_merge($vary, ['Authorization']));
+                }
+            }
         } catch (\Exception $e) {
             // Silently fail - don't break the API
+        }
+    }
+
+    private function isFilteringActive(): bool
+    {
+        return $this->filterOperationsBySecurity && null !== $this->resourceAccessChecker;
+    }
+
+    /**
+     * An operation is advertised when filtering is inactive, when it carries
+     * no security expression (default: allowed), or when the expression
+     * grants access for the current token. Evaluation errors fail closed
+     * (operation hidden) — the actual request would fail anyway.
+     */
+    private function isOperationGranted(HttpOperation $op, ?object $subject): bool
+    {
+        if (!$this->isFilteringActive()) {
+            return true;
+        }
+
+        $security = $op->getSecurity();
+        if (null === $security || '' === (string) $security) {
+            return true;
+        }
+
+        $resourceClass = $op->getClass();
+        if (!$resourceClass) {
+            return true;
+        }
+
+        try {
+            // `object` is always defined (null on collections / when the
+            // loaded entity is not resolvable) so expressions referencing it
+            // evaluate instead of raising an undefined-variable error.
+            return $this->resourceAccessChecker->isGranted(
+                $resourceClass,
+                (string) $security,
+                ['object' => $subject]
+            );
+        } catch (\Throwable) {
+            return false;
         }
     }
 
     private function generateTitle(HttpOperation $operation): string
     {
         $method = $operation->getMethod() ?? 'GET';
-        $name = $operation->getName();
+        $name = $operation->getName() ?? '';
         $uriTemplate = $operation->getUriTemplate() ?? '';
 
         // Detect if this is a standard CRUD operation or a custom operation
