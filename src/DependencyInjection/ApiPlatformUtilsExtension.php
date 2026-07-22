@@ -32,14 +32,13 @@ class ApiPlatformUtilsExtension extends Extension
         $container->setParameter('dmstr_api_platform_utils.hydra_operations.enabled', $config['hydra_operations']['enabled']);
         $container->setParameter('dmstr_api_platform_utils.hydra_operations.api_prefix', $config['hydra_operations']['api_prefix']);
         $container->setParameter('dmstr_api_platform_utils.hydra_operations.event_priority', $config['hydra_operations']['event_priority']);
+        $container->setParameter('dmstr_api_platform_utils.hydra_operations.filter_operations_by_security', $config['hydra_operations']['filter_operations_by_security']);
 
         $container->setParameter('dmstr_api_platform_utils.custom_operation_hydra.enabled', $config['custom_operation_hydra']['enabled']);
         $container->setParameter('dmstr_api_platform_utils.custom_operation_hydra.api_prefix', $config['custom_operation_hydra']['api_prefix']);
 
         $container->setParameter('dmstr_api_platform_utils.hydra_documentation.enabled', $config['hydra_documentation']['enabled']);
         $container->setParameter('dmstr_api_platform_utils.hydra_documentation.api_prefix', $config['hydra_documentation']['api_prefix']);
-
-        $container->setParameter('dmstr_api_platform_utils.partial_uuid_item_provider.enabled', $config['partial_uuid_item_provider']['enabled']);
 
         $container->setParameter('dmstr_api_platform_utils.partial_uuid_item_provider.enabled', $config['partial_uuid_item_provider']['enabled']);
 
