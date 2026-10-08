@@ -1,4 +1,4 @@
-<!-- file generated with AI assistance: Claude Code - 2026-07-22, revised 2026-10-08 13:30:00 UTC -->
+<!-- file generated with AI assistance: Claude Code - 2026-07-22, revised 2026-10-08 13:37:13 UTC -->
 
 # Changelog
 
@@ -16,6 +16,7 @@
 
 - `email` added to the default `relation_field_decorator.label_property_candidates` (`name`, `title`, `label`, `displayName`, `email`). Projects that set the list explicitly are not affected.
 - Label property candidates from several config files are de-duplicated (list nodes are appended to each other when merged).
+- `symfony/yaml` moved from `require-dev` to `require`: the bundle extension always loads `config/services.yaml` via `YamlFileLoader`, so it is a runtime dependency.
 
 ## 0.4.0 - 2026-07-22
 
