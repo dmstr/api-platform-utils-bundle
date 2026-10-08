@@ -1,8 +1,23 @@
-<!-- file generated with AI assistance: Claude Code - 2026-07-22 -->
+<!-- file generated with AI assistance: Claude Code - 2026-07-22, revised 2026-10-08 13:30:00 UTC -->
 
 # Changelog
 
 ## Unreleased
+
+### Added
+
+- `auto_order` (opt-in, default off): generated `order[<property>]` query parameters (API Platform `SortFilter`) for the `GetCollection` operations of Doctrine ORM resources — sortable scalar fields (type whitelist, identifiers excluded) and to-one relations as `order[<relation>.<label>]`, label from `relation_field_decorator.label_property_candidates` only. Only API-readable properties (name collection, `readable`, normalization groups) are offered; explicit `#[ApiFilter(OrderFilter::class)]` declarations and parameters the operation declares itself win per property; operations with their own `provider` are skipped; DTO resources are mapped via `stateOptions` `entityClass`. Requires API Platform >= 4.3.
+- `auto_order.default_order` (default `{name: ASC, createdAt: DESC}`): default sort for `GetCollection` operations without an own `order`; the first key that is a sortable property of the resource wins.
+- `#[AutoOrder(enabled: false)]` / `#[AutoOrder(exclude: [...])]` attribute to switch auto-ordering off or restrict it per class.
+- `stable_order` (opt-in, default off): `StableOrderExtension` appends `ORDER BY <identifier> ASC` to Doctrine ORM collection queries that do not sort by the identifier yet (priority -40, between `OrderExtension` and pagination), for stable paging over non-unique sort columns. Skipped for composite/foreign identifiers and `GROUP BY` queries.
+- Output schemas: relation properties (`format: iri-reference`) get `x-label-property` and `x-resource-class` — label from the candidate list only, no `x-collection`/`x-value-property`/`x-search-property`, so read-only relations are not turned into pickers. Input schemas are unchanged.
+
+### Changed
+
+- `email` added to the default `relation_field_decorator.label_property_candidates` (`name`, `title`, `label`, `displayName`, `email`). Projects that set the list explicitly are not affected.
+- Label property candidates from several config files are de-duplicated (list nodes are appended to each other when merged).
+
+## 0.4.0 - 2026-07-22
 
 ### Added
 

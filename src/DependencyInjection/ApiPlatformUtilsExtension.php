@@ -1,10 +1,12 @@
 <?php
-// file generated with AI assistance: Claude Code - 2025-11-22, revised 2026-10-08 12:00:00 UTC
+// file generated with AI assistance: Claude Code - 2025-11-22, revised 2026-10-08 12:25:00 UTC
 
 declare(strict_types=1);
 
 namespace Dmstr\ApiPlatformUtils\DependencyInjection;
 
+use ApiPlatform\Doctrine\Orm\Filter\SortFilter;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
@@ -27,7 +29,8 @@ class ApiPlatformUtilsExtension extends Extension
         $container->setParameter('dmstr_api_platform_utils.relation_field_decorator.enabled', $config['relation_field_decorator']['enabled']);
         $container->setParameter('dmstr_api_platform_utils.relation_field_decorator.api_prefix', $config['relation_field_decorator']['api_prefix']);
         $container->setParameter('dmstr_api_platform_utils.relation_field_decorator.decoration_priority', $config['relation_field_decorator']['decoration_priority']);
-        $container->setParameter('dmstr_api_platform_utils.relation_field_decorator.label_property_candidates', $config['relation_field_decorator']['label_property_candidates']);
+        // de-duplicated: list nodes of several config files are appended to each other
+        $container->setParameter('dmstr_api_platform_utils.relation_field_decorator.label_property_candidates', array_values(array_unique($config['relation_field_decorator']['label_property_candidates'])));
 
         $container->setParameter('dmstr_api_platform_utils.hydra_operations.enabled', $config['hydra_operations']['enabled']);
         $container->setParameter('dmstr_api_platform_utils.hydra_operations.api_prefix', $config['hydra_operations']['api_prefix']);
@@ -43,6 +46,9 @@ class ApiPlatformUtilsExtension extends Extension
         $container->setParameter('dmstr_api_platform_utils.partial_uuid_item_provider.enabled', $config['partial_uuid_item_provider']['enabled']);
 
         $container->setParameter('dmstr_api_platform_utils.auto_order.enabled', $config['auto_order']['enabled']);
+        $container->setParameter('dmstr_api_platform_utils.auto_order.default_order', $config['auto_order']['default_order']);
+
+        $container->setParameter('dmstr_api_platform_utils.stable_order.enabled', $config['stable_order']['enabled']);
 
         // Load service definitions
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
@@ -58,7 +64,16 @@ class ApiPlatformUtilsExtension extends Extension
         // Conditionally load the auto-order metadata factory. Off by default:
         // it adds query parameters to every Doctrine GetCollection operation.
         if ($config['auto_order']['enabled']) {
+            if (!class_exists(SortFilter::class)) {
+                throw new InvalidConfigurationException('dmstr_api_platform_utils.auto_order requires API Platform >= 4.3 (ApiPlatform\\Doctrine\\Orm\\Filter\\SortFilter with nested property support).');
+            }
             $loader->load('services_auto_order.yaml');
+        }
+
+        // Conditionally load the tie-breaker query extension. Off by default:
+        // it changes the ORDER BY of every Doctrine collection query.
+        if ($config['stable_order']['enabled']) {
+            $loader->load('services_stable_order.yaml');
         }
     }
 

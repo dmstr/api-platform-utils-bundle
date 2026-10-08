@@ -1,5 +1,5 @@
 <?php
-// file generated with AI assistance: Claude Code - 2025-11-22, revised 2026-10-08 12:00:00 UTC
+// file generated with AI assistance: Claude Code - 2025-11-22, revised 2026-10-08 12:25:00 UTC
 
 declare(strict_types=1);
 
@@ -54,8 +54,8 @@ class Configuration implements ConfigurationInterface
                         ->end()
                         ->arrayNode('label_property_candidates')
                             ->scalarPrototype()->end()
-                            ->defaultValue(['name', 'title', 'label', 'displayName'])
-                            ->info('Property names to check for entity labels (in order of preference)')
+                            ->defaultValue(['name', 'title', 'label', 'displayName', 'email'])
+                            ->info('Property names to check for entity labels (in order of preference); also used by auto_order for the label of to-one relations')
                         ->end()
                     ->end()
                 ->end()
@@ -113,13 +113,41 @@ class Configuration implements ConfigurationInterface
                     ->end()
                 ->end()
 
-                // Auto-generated order[<property>] parameters
+                // Auto-generated order[<property>] parameters and default sort
                 ->arrayNode('auto_order')
                     ->addDefaultsIfNotSet()
                     ->children()
                         ->booleanNode('enabled')
                             ->defaultFalse()
-                            ->info('Generate order[<property>] query parameters (SortFilter) for the GetCollection operations of Doctrine ORM resources: sortable scalar fields and to-one relations via their label property (relation_field_decorator.label_property_candidates). Properties with an explicit #[ApiFilter(OrderFilter::class)] are left alone.')
+                            ->info('Generate order[<property>] query parameters (SortFilter) for the GetCollection operations of Doctrine ORM resources: sortable scalar fields and to-one relations via their label property (relation_field_decorator.label_property_candidates). Properties with an explicit #[ApiFilter(OrderFilter::class)] are left alone; #[AutoOrder] restricts or disables it per class. Requires API Platform >= 4.3.')
+                        ->end()
+                        ->arrayNode('default_order')
+                            ->info('Default sort for GetCollection operations without an own `order`: the first property that is sortable on the resource wins, e.g. {name: ASC, createdAt: DESC}. Empty map = no default sort (API Platform orders by identifier).')
+                            ->useAttributeAsKey('property')
+                            ->normalizeKeys(false)
+                            ->performNoDeepMerging()
+                            ->scalarPrototype()
+                                ->beforeNormalization()
+                                    ->ifString()
+                                    ->then(static fn (string $v): string => strtoupper($v))
+                                ->end()
+                                ->validate()
+                                    ->ifNotInArray(['ASC', 'DESC'])
+                                    ->thenInvalid('Invalid sort direction %s, expected ASC or DESC.')
+                                ->end()
+                            ->end()
+                            ->defaultValue(['name' => 'ASC', 'createdAt' => 'DESC'])
+                        ->end()
+                    ->end()
+                ->end()
+
+                // Tie-breaker for stable pagination
+                ->arrayNode('stable_order')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->booleanNode('enabled')
+                            ->defaultFalse()
+                            ->info('Append ORDER BY <identifier> ASC to Doctrine ORM collection queries whose ORDER BY does not contain the identifier, so that paging over a non-unique sort column is stable. Skipped for composite/foreign identifiers and GROUP BY queries.')
                         ->end()
                     ->end()
                 ->end()
