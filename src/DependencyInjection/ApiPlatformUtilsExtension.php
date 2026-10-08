@@ -1,5 +1,5 @@
 <?php
-// file generated with AI assistance: Claude Code - 2025-11-22
+// file generated with AI assistance: Claude Code - 2025-11-22, revised 2026-10-08 12:00:00 UTC
 
 declare(strict_types=1);
 
@@ -42,6 +42,8 @@ class ApiPlatformUtilsExtension extends Extension
 
         $container->setParameter('dmstr_api_platform_utils.partial_uuid_item_provider.enabled', $config['partial_uuid_item_provider']['enabled']);
 
+        $container->setParameter('dmstr_api_platform_utils.auto_order.enabled', $config['auto_order']['enabled']);
+
         // Load service definitions
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.yaml');
@@ -51,6 +53,12 @@ class ApiPlatformUtilsExtension extends Extension
         // not change item-lookup semantics for existing bundle consumers.
         if ($config['partial_uuid_item_provider']['enabled']) {
             $loader->load('services_partial_uuid.yaml');
+        }
+
+        // Conditionally load the auto-order metadata factory. Off by default:
+        // it adds query parameters to every Doctrine GetCollection operation.
+        if ($config['auto_order']['enabled']) {
+            $loader->load('services_auto_order.yaml');
         }
     }
 

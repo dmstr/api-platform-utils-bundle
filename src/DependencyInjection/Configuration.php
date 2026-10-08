@@ -1,5 +1,5 @@
 <?php
-// file generated with AI assistance: Claude Code - 2025-11-22
+// file generated with AI assistance: Claude Code - 2025-11-22, revised 2026-10-08 12:00:00 UTC
 
 declare(strict_types=1);
 
@@ -109,6 +109,17 @@ class Configuration implements ConfigurationInterface
                         ->scalarNode('api_prefix')
                             ->defaultValue('/api')
                             ->info('API prefix prepended when emitting @id / hydra:uriTemplate on operations')
+                        ->end()
+                    ->end()
+                ->end()
+
+                // Auto-generated order[<property>] parameters
+                ->arrayNode('auto_order')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->booleanNode('enabled')
+                            ->defaultFalse()
+                            ->info('Generate order[<property>] query parameters (SortFilter) for the GetCollection operations of Doctrine ORM resources: sortable scalar fields and to-one relations via their label property (relation_field_decorator.label_property_candidates). Properties with an explicit #[ApiFilter(OrderFilter::class)] are left alone.')
                         ->end()
                     ->end()
                 ->end()
