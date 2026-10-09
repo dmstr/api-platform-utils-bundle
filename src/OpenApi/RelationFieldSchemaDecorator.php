@@ -17,6 +17,7 @@ use ReflectionClass;
 
 /**
  * Decorator that adds OpenAPI x-* extensions to relation properties for autocomplete rendering.
+ * Applies to input and output schemas alike.
  *
  * Automatically detects Doctrine relations and adds:
  * - x-collection: Collection endpoint URL
@@ -69,17 +70,13 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
             $forceCollection
         );
 
-        // Only add extensions for INPUT schemas (forms)
-        if ($type !== Schema::TYPE_INPUT) {
-            $this->logger->debug('Skipping RelationFieldSchemaDecorator for non-INPUT schema', [
-                'className' => $className,
-                'type' => $type
-            ]);
-            return $schema;
-        }
-
-        $this->logger->debug('Processing RelationFieldSchemaDecorator for INPUT schema', [
-            'className' => $className
+        // Input AND output schemas are decorated: clients that build forms from
+        // the read schema (the plain `<Name>` schema is only emitted when a
+        // resource has no serialization groups) would otherwise never see the
+        // hints and render a bare string input instead of the type-ahead.
+        $this->logger->debug('Processing RelationFieldSchemaDecorator', [
+            'className' => $className,
+            'type' => $type
         ]);
 
         try {
