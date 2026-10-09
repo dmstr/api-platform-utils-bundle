@@ -1,0 +1,17 @@
+# file generated with AI assistance: Claude Code - 2026-10-10 00:15:00 UTC
+
+services:
+    _defaults:
+        autowire: false
+        autoconfigure: false
+        public: false
+
+    # Drops property defaults that violate their own pattern/minLength/
+    # maxLength/enum (e.g. `default: ""` next to a slug pattern). Priority 5
+    # wraps below RelationFieldSchemaDecorator (10); the order does not
+    # matter for the result, the two touch different keys.
+    Dmstr\ApiPlatformUtils\OpenApi\InvalidDefaultSchemaDecorator:
+        decorates: 'api_platform.json_schema.schema_factory'
+        decoration_priority: 5
+        arguments:
+            $decorated: '@.inner'

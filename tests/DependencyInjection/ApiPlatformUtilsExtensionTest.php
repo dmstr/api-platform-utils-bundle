@@ -8,6 +8,7 @@ namespace Dmstr\ApiPlatformUtils\Tests\DependencyInjection;
 use Dmstr\ApiPlatformUtils\DependencyInjection\ApiPlatformUtilsExtension;
 use Dmstr\ApiPlatformUtils\Doctrine\Orm\Extension\StableOrderExtension;
 use Dmstr\ApiPlatformUtils\Metadata\AutoOrderResourceMetadataCollectionFactory;
+use Dmstr\ApiPlatformUtils\OpenApi\InvalidDefaultSchemaDecorator;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -65,6 +66,19 @@ final class ApiPlatformUtilsExtensionTest extends TestCase
             [['priority' => -40]],
             $container->getDefinition(StableOrderExtension::class)->getTag('api_platform.doctrine.orm.query_extension.collection'),
         );
+    }
+
+    public function testSchemaDefaultCleanupIsOnByDefaultAndCanBeSwitchedOff(): void
+    {
+        $on = $this->load([self::BASE]);
+        self::assertTrue($on->hasDefinition(InvalidDefaultSchemaDecorator::class));
+        self::assertSame(
+            'api_platform.json_schema.schema_factory',
+            $on->getDefinition(InvalidDefaultSchemaDecorator::class)->getDecoratedService()[0],
+        );
+
+        $off = $this->load([self::BASE + ['schema_default_cleanup' => ['enabled' => false]]]);
+        self::assertFalse($off->hasDefinition(InvalidDefaultSchemaDecorator::class));
     }
 
     public function testLabelCandidatesOfSeveralConfigsAreDeduplicated(): void

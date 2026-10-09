@@ -60,6 +60,17 @@ class Configuration implements ConfigurationInterface
                     ->end()
                 ->end()
 
+                // Invalid property defaults in JSON schemas
+                ->arrayNode('schema_default_cleanup')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->booleanNode('enabled')
+                            ->defaultTrue()
+                            ->info('Drop a property `default` from the JSON/OpenAPI schemas when the property schema itself rejects it (pattern, minLength, maxLength, enum), e.g. `default: ""` derived from `private string $slug = \'\'` next to a slug pattern')
+                        ->end()
+                    ->end()
+                ->end()
+
                 // Hydra Operations Subscriber
                 ->arrayNode('hydra_operations')
                     ->addDefaultsIfNotSet()

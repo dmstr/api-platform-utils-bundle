@@ -1,6 +1,12 @@
-<!-- file generated with AI assistance: Claude Code - 2026-07-22, revised 2026-10-08 13:37:13 UTC -->
+<!-- file generated with AI assistance: Claude Code - 2026-07-22, revised 2026-10-08 13:37:13 UTC, revised 2026-10-10 00:25:00 UTC -->
 
 # Changelog
+
+## Unreleased
+
+### Fixed
+
+- `InvalidDefaultSchemaDecorator` drops a property `default` from the JSON/OpenAPI schemas when the property schema itself rejects it (`pattern`, `minLength`, `maxLength`, `enum`). API Platform derives `default` from the PHP initializer, so `private string $slug = '';` next to a slug `#[Assert\Regex]` produced `default: ""` that its own `pattern` rejects, and form clients showed a validation error before anyone typed. Valid defaults are untouched; a pattern PHP cannot compile keeps its default. On by default, switch off with `schema_default_cleanup.enabled: false`.
 
 ## 0.5.0 (2026-10-09)
 
