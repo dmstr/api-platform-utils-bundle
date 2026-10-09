@@ -1,5 +1,5 @@
 <?php
-// file generated with AI assistance: Claude Code - 2025-11-22
+// file generated with AI assistance: Claude Code - 2025-11-22, revised 2026-10-08 13:15:00 UTC
 
 declare(strict_types=1);
 
@@ -47,7 +47,7 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
         private readonly ResourceMetadataCollectionFactoryInterface $resourceMetadataFactory,
         private readonly LoggerInterface $logger,
         private readonly string $apiPrefix = '/api',
-        private readonly array $labelPropertyCandidates = ['name', 'title', 'label', 'displayName']
+        private readonly array $labelPropertyCandidates = ['name', 'title', 'label', 'displayName', 'email']
     ) {
     }
 
@@ -102,6 +102,17 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
 
         if ($definitions !== null) {
             foreach ($definitions as $key => $definition) {
+                // JSON-LD output definitions wrap their properties in allOf
+                // next to the Hydra base schema.
+                if (\is_array($allOf = $definition['allOf'] ?? null)) {
+                    foreach ($allOf as $i => $part) {
+                        $allOf[$i] = $this->withRelationExtensions($part, $metadata);
+                    }
+                    // reassign: ArrayObject elements cannot be modified indirectly
+                    $definition['allOf'] = $allOf;
+                    $definitions[$key] = $definition;
+                }
+
                 if (!isset($definition['properties'])) {
                     $this->logger->debug('Definition has no properties', [
                         'className' => $metadata->getName(),
@@ -162,6 +173,35 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
         }
 
         $schema[$propertiesKey] = $properties;
+    }
+
+    /**
+     * Adds the relation extensions to the iri-reference properties of one
+     * schema part (an allOf member).
+     *
+     * @param array<mixed>|\ArrayObject<mixed, mixed>|mixed $part
+     *
+     * @return array<mixed>|\ArrayObject<mixed, mixed>|mixed
+     */
+    private function withRelationExtensions(mixed $part, ClassMetadata $metadata): mixed
+    {
+        if ((!\is_array($part) && !$part instanceof \ArrayObject) || !is_iterable($part['properties'] ?? null)) {
+            return $part;
+        }
+
+        $properties = $part['properties'];
+        foreach ($properties as $propertyName => $propertyDef) {
+            if (($propertyDef['format'] ?? null) !== 'iri-reference') {
+                continue;
+            }
+            $extensions = $this->getRelationExtensions($metadata, (string) $propertyName);
+            if ($extensions !== null) {
+                $properties[$propertyName] = array_merge(\is_array($propertyDef) ? $propertyDef : (array) $propertyDef, $extensions);
+            }
+        }
+        $part['properties'] = $properties;
+
+        return $part;
     }
 
     private function processDefinitionProperties(\ArrayObject &$definitions, string $key, ClassMetadata $metadata): void

@@ -1,0 +1,14 @@
+# file generated with AI assistance: Claude Code - 2026-10-08 12:20:00 UTC
+
+services:
+    _defaults:
+        autowire: false
+        autoconfigure: false
+        public: false
+
+    # Tie-breaker for stable pagination: appends ORDER BY <identifier> ASC
+    # to collection queries. Priority -40 runs after OrderExtension (-32)
+    # and before pagination (-64).
+    Dmstr\ApiPlatformUtils\Doctrine\Orm\Extension\StableOrderExtension:
+        tags:
+            - { name: 'api_platform.doctrine.orm.query_extension.collection', priority: -40 }

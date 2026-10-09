@@ -1,0 +1,24 @@
+# file generated with AI assistance: Claude Code - 2026-10-08 12:20:00 UTC
+
+services:
+    _defaults:
+        autowire: false
+        autoconfigure: false
+        public: false
+
+    # Auto-generated order[<property>] query parameters (SortFilter) and the
+    # default sort for GetCollection operations of Doctrine ORM resources.
+    # Priority 1100 runs before API Platform's parameter factory (1000),
+    # which completes schema, OpenAPI and nested_properties_info of the
+    # generated parameters.
+    Dmstr\ApiPlatformUtils\Metadata\AutoOrderResourceMetadataCollectionFactory:
+        decorates: 'api_platform.metadata.resource.metadata_collection_factory'
+        decoration_priority: 1100
+        arguments:
+            $decorated: '@.inner'
+            $managerRegistry: '@doctrine'
+            $propertyNameCollectionFactory: '@api_platform.metadata.property.name_collection_factory'
+            $propertyMetadataFactory: '@api_platform.metadata.property.metadata_factory'
+            $labelPropertyCandidates: '%dmstr_api_platform_utils.relation_field_decorator.label_property_candidates%'
+            $defaultOrder: '%dmstr_api_platform_utils.auto_order.default_order%'
+            $orderParameterName: '%api_platform.collection.order_parameter_name%'
