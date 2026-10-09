@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- `RelationFieldSchemaDecorator` also decorates output (read) schemas: `x-collection`, `x-label-property`, `x-value-property`, `x-search-property` and `x-resource-class` were only added to input schemas, so clients building forms from the read schema (resources with serialization groups have no plain schema) got no type-ahead for `iri-reference` fields
 - Duplicate `partial_uuid_item_provider` node in the bundle configuration tree (and the duplicate parameter assignment in the extension)
 
 ## 0.3.1 and earlier
