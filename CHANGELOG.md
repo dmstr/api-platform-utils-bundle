@@ -2,7 +2,7 @@
 
 # Changelog
 
-## Unreleased
+## 0.5.0 (2026-10-09)
 
 ### Added
 
@@ -10,7 +10,6 @@
 - `auto_order.default_order` (default `{name: ASC, createdAt: DESC}`): default sort for `GetCollection` operations without an own `order`; the first key that is a sortable property of the resource wins.
 - `#[AutoOrder(enabled: false)]` / `#[AutoOrder(exclude: [...])]` attribute to switch auto-ordering off or restrict it per class.
 - `stable_order` (opt-in, default off): `StableOrderExtension` appends `ORDER BY <identifier> ASC` to Doctrine ORM collection queries that do not sort by the identifier yet (priority -40, between `OrderExtension` and pagination), for stable paging over non-unique sort columns. Skipped for composite/foreign identifiers and `GROUP BY` queries.
-- Output schemas: relation properties (`format: iri-reference`) get `x-label-property` and `x-resource-class` — label from the candidate list only, no `x-collection`/`x-value-property`/`x-search-property`, so read-only relations are not turned into pickers. Input schemas are unchanged.
 
 ### Changed
 
@@ -18,7 +17,17 @@
 - Label property candidates from several config files are de-duplicated (list nodes are appended to each other when merged).
 - `symfony/yaml` moved from `require-dev` to `require`: the bundle extension always loads `config/services.yaml` via `YamlFileLoader`, so it is a runtime dependency.
 
-## 0.4.0 - 2026-07-22
+### Fixed
+
+- Relation extensions are also added to properties inside `allOf` (JSON-LD output definitions wrap their properties next to the Hydra base schema), so JSON-LD read schemas get the hints introduced in 0.4.1.
+
+## 0.4.1 (2026-10-09)
+
+### Fixed
+
+- `RelationFieldSchemaDecorator` also decorates output (read) schemas: `x-collection`, `x-label-property`, `x-value-property`, `x-search-property` and `x-resource-class` were only added to input schemas, so clients building forms from the read schema (resources with serialization groups have no plain schema) got no type-ahead for `iri-reference` fields
+
+## 0.4.0 (2026-07-22)
 
 ### Added
 

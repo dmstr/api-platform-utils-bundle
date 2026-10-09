@@ -110,10 +110,7 @@ dmstr_api_platform_utils:
 
 `RelationFieldSchemaDecorator` adds `x-*` extensions to relation properties (`format: iri-reference`) of Doctrine resources:
 
-- **Input schemas** (forms): `x-collection`, `x-label-property`, `x-value-property`, `x-search-property`, `x-resource-class`, for autocomplete pickers. The label is the first candidate the target class declares, else its first string property.
-- **Output schemas** (read models, list columns): only `x-label-property` and `x-resource-class`, label from the candidate list only (no extension without a candidate). Without `x-collection` a read-only relation is not turned into a picker, while a list can still show and sort the relation by its label (`order[<relation>.<label>]`).
-
-Output processing touches only the definitions the built schema references, read with the Doctrine metadata of the operation's output class. When input and output share a definition name (no serialization groups, same format), that definition carries the input extensions.
+Input and output schemas get the same five extensions: `x-collection`, `x-label-property`, `x-value-property`, `x-search-property` and `x-resource-class`. Forms built from the read schema (resources with serialization groups have no plain schema) get the autocomplete picker, and lists can show and sort a relation by its label (`order[<relation>.<label>]`, offered by `auto_order` only when the label is one of the candidates). The label is the first candidate the target class declares, else its first string property. Properties inside `allOf` are decorated too, which is where JSON-LD output definitions keep them.
 
 ## License
 

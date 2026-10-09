@@ -17,6 +17,7 @@ use ReflectionClass;
 
 /**
  * Decorator that adds OpenAPI x-* extensions to relation properties for autocomplete rendering.
+ * Applies to input and output schemas alike.
  *
  * Automatically detects Doctrine relations and adds:
  * - x-collection: Collection endpoint URL
@@ -37,23 +38,9 @@ use ReflectionClass;
  *     "x-resource-class": "Customer"
  *   }
  * }
- *
- * Input schemas (forms) get all five extensions. Output schemas (read
- * models, list columns) get only `x-label-property` and `x-resource-class`:
- * `x-collection` there would make IRI picker editors claim read-only
- * relations. The output label comes from the configured candidates only;
- * a relation without a candidate gets no extension there (input schemas
- * keep the "first string property" fallback). Output processing is limited to the definitions the built
- * schema references directly, read with the Doctrine metadata of the
- * operation's output class. When input and output share a definition name
- * (no serialization groups, same format), the definition carries the input
- * extensions.
  */
 class RelationFieldSchemaDecorator implements SchemaFactoryInterface
 {
-    /** Extensions that output (read) schemas get; the rest is input only. */
-    private const OUTPUT_EXTENSIONS = ['x-label-property', 'x-resource-class'];
-
     public function __construct(
         private readonly SchemaFactoryInterface $decorated,
         private readonly EntityManagerInterface $entityManager,
@@ -83,21 +70,13 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
             $forceCollection
         );
 
-        if ($type === Schema::TYPE_OUTPUT) {
-            return $this->decorateOutputSchema($schema, $className, $operation);
-        }
-
-        // Full extensions for INPUT schemas (forms)
-        if ($type !== Schema::TYPE_INPUT) {
-            $this->logger->debug('Skipping RelationFieldSchemaDecorator for non-INPUT schema', [
-                'className' => $className,
-                'type' => $type
-            ]);
-            return $schema;
-        }
-
-        $this->logger->debug('Processing RelationFieldSchemaDecorator for INPUT schema', [
-            'className' => $className
+        // Input AND output schemas are decorated: clients that build forms from
+        // the read schema (the plain `<Name>` schema is only emitted when a
+        // resource has no serialization groups) would otherwise never see the
+        // hints and render a bare string input instead of the type-ahead.
+        $this->logger->debug('Processing RelationFieldSchemaDecorator', [
+            'className' => $className,
+            'type' => $type
         ]);
 
         try {
@@ -123,6 +102,17 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
 
         if ($definitions !== null) {
             foreach ($definitions as $key => $definition) {
+                // JSON-LD output definitions wrap their properties in allOf
+                // next to the Hydra base schema.
+                if (\is_array($allOf = $definition['allOf'] ?? null)) {
+                    foreach ($allOf as $i => $part) {
+                        $allOf[$i] = $this->withRelationExtensions($part, $metadata);
+                    }
+                    // reassign: ArrayObject elements cannot be modified indirectly
+                    $definition['allOf'] = $allOf;
+                    $definitions[$key] = $definition;
+                }
+
                 if (!isset($definition['properties'])) {
                     $this->logger->debug('Definition has no properties', [
                         'className' => $metadata->getName(),
@@ -143,113 +133,6 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
         }
 
         return $schema;
-    }
-
-    /**
-     * Adds `x-label-property` / `x-resource-class` to the relation properties
-     * of the definitions this output schema references (item definition, or
-     * the member items of a collection schema), including properties nested
-     * in `allOf` (JSON-LD wraps them next to the Hydra base schema).
-     */
-    private function decorateOutputSchema(Schema $schema, string $className, ?Operation $operation): Schema
-    {
-        $outputClass = $className;
-        if (null !== $operation) {
-            $output = $operation->getOutput();
-            if (false === $output) {
-                return $schema;
-            }
-            if (\is_string($output)) {
-                $outputClass = $output;
-            } elseif (\is_array($output) && \array_key_exists('class', $output)) {
-                if (null === $output['class']) {
-                    return $schema;
-                }
-                $outputClass = $output['class'];
-            }
-        }
-
-        try {
-            $metadata = $this->entityManager->getClassMetadata($outputClass);
-        } catch (\Exception) {
-            return $schema;
-        }
-
-        $definitions = $schema->getDefinitions();
-        $keys = $this->referencedDefinitionKeys($schema->getArrayCopy(false));
-        foreach ($keys as $key) {
-            if (!isset($definitions[$key])) {
-                continue;
-            }
-            $definition = $definitions[$key];
-            $definition = $this->withOutputExtensions($definition, $metadata);
-            if (\is_array($allOf = $definition['allOf'] ?? null)) {
-                foreach ($allOf as $i => $part) {
-                    if (\is_array($part) || $part instanceof \ArrayObject) {
-                        $allOf[$i] = $this->withOutputExtensions($part, $metadata);
-                    }
-                }
-                // reassign: ArrayObject elements cannot be modified indirectly
-                $definition['allOf'] = $allOf;
-            }
-            $definitions[$key] = $definition;
-        }
-
-        return $schema;
-    }
-
-    /**
-     * @param array<mixed>|\ArrayObject<mixed, mixed> $definition
-     *
-     * @return array<mixed>|\ArrayObject<mixed, mixed>
-     */
-    private function withOutputExtensions(array|\ArrayObject $definition, ClassMetadata $metadata): array|\ArrayObject
-    {
-        if (!isset($definition['properties']) || !is_iterable($definition['properties'])) {
-            return $definition;
-        }
-
-        $properties = $definition['properties'];
-        foreach ($properties as $propertyName => $propertyDef) {
-            if (($propertyDef['format'] ?? null) !== 'iri-reference') {
-                continue;
-            }
-            $extensions = $this->getRelationExtensions($metadata, (string) $propertyName, true);
-            if ($extensions === null) {
-                continue;
-            }
-            $properties[$propertyName] = array_merge(
-                \is_array($propertyDef) ? $propertyDef : (array) $propertyDef,
-                array_intersect_key($extensions, array_flip(self::OUTPUT_EXTENSIONS))
-            );
-        }
-        $definition['properties'] = $properties;
-
-        return $definition;
-    }
-
-    /**
-     * Definition keys referenced by `$ref` in the schema itself (not inside
-     * its definitions).
-     *
-     * @return list<string>
-     */
-    private function referencedDefinitionKeys(mixed $node): array
-    {
-        if (!is_iterable($node)) {
-            return [];
-        }
-
-        $keys = [];
-        foreach ($node as $key => $value) {
-            if ($key === '$ref' && \is_string($value)) {
-                $keys[] = substr($value, (int) strrpos($value, '/') + 1);
-            } elseif (is_iterable($value)) {
-                $keys = [...$keys, ...$this->referencedDefinitionKeys($value)];
-            }
-        }
-
-        return array_values(array_unique($keys));
     }
 
     private function processProperties(Schema $schema, ClassMetadata $metadata, string $propertiesKey): void
@@ -292,6 +175,35 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
         $schema[$propertiesKey] = $properties;
     }
 
+    /**
+     * Adds the relation extensions to the iri-reference properties of one
+     * schema part (an allOf member).
+     *
+     * @param array<mixed>|\ArrayObject<mixed, mixed>|mixed $part
+     *
+     * @return array<mixed>|\ArrayObject<mixed, mixed>|mixed
+     */
+    private function withRelationExtensions(mixed $part, ClassMetadata $metadata): mixed
+    {
+        if ((!\is_array($part) && !$part instanceof \ArrayObject) || !is_iterable($part['properties'] ?? null)) {
+            return $part;
+        }
+
+        $properties = $part['properties'];
+        foreach ($properties as $propertyName => $propertyDef) {
+            if (($propertyDef['format'] ?? null) !== 'iri-reference') {
+                continue;
+            }
+            $extensions = $this->getRelationExtensions($metadata, (string) $propertyName);
+            if ($extensions !== null) {
+                $properties[$propertyName] = array_merge(\is_array($propertyDef) ? $propertyDef : (array) $propertyDef, $extensions);
+            }
+        }
+        $part['properties'] = $properties;
+
+        return $part;
+    }
+
     private function processDefinitionProperties(\ArrayObject &$definitions, string $key, ClassMetadata $metadata): void
     {
         $definition = $definitions[$key];
@@ -329,13 +241,7 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
         }
     }
 
-    /**
-     * @param bool $candidatesOnly label only from the configured candidates
-     *                             (output schemas): no "first string
-     *                             property" fallback, no extensions without
-     *                             a candidate
-     */
-    private function getRelationExtensions(ClassMetadata $metadata, string $propertyName, bool $candidatesOnly = false): ?array
+    private function getRelationExtensions(ClassMetadata $metadata, string $propertyName): ?array
     {
         $this->logger->debug('Getting relation extensions', [
             'className' => $metadata->getName(),
@@ -384,10 +290,7 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
         }
 
         // Infer label property from target entity
-        $labelProperty = $candidatesOnly ? $this->candidateLabelProperty($targetClass) : $this->inferLabelProperty($targetClass);
-        if ($labelProperty === null) {
-            return null;
-        }
+        $labelProperty = $this->inferLabelProperty($targetClass);
 
         // Get short resource name
         $shortName = $this->getShortName($targetClass);
@@ -460,26 +363,6 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
         }
 
         $this->logger->debug('No GetCollection operation found');
-        return null;
-    }
-
-    /**
-     * First label candidate the class declares, or null.
-     */
-    private function candidateLabelProperty(string $className): ?string
-    {
-        try {
-            $reflectionClass = new ReflectionClass($className);
-        } catch (\ReflectionException) {
-            return null;
-        }
-
-        foreach ($this->labelPropertyCandidates as $candidate) {
-            if ($reflectionClass->hasProperty($candidate)) {
-                return $candidate;
-            }
-        }
-
         return null;
     }
 

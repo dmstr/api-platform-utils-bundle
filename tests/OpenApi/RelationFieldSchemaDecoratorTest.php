@@ -26,34 +26,41 @@ final class RelationFieldSchemaDecoratorTest extends TestCase
 {
     private const RELATION = ['type' => 'string', 'format' => 'iri-reference'];
 
-    public function testOutputSchemaGetsOnlyLabelAndResourceClass(): void
+    private const AUTHOR_EXTENSIONS = [
+        'x-collection' => '/api/authors',
+        'x-label-property' => 'name',
+        'x-value-property' => '@id',
+        'x-search-property' => 'name',
+        'x-resource-class' => 'Author',
+    ];
+
+    public function testOutputSchemaGetsAllExtensionsInsideAllOf(): void
     {
         $schema = $this->build(Schema::TYPE_OUTPUT, 'Book.jsonld');
         $properties = $schema->getDefinitions()['Book.jsonld']['allOf'][1]['properties'];
 
+        self::assertSame(self::RELATION + self::AUTHOR_EXTENSIONS, $properties['author']);
+        // output keeps the "first string property" fallback like input
+        self::assertSame('code', $properties['publisher']['x-label-property']);
+    }
+
+    public function testOutputSchemaDecoratesPlainDefinitionsToo(): void
+    {
+        $schema = $this->build(Schema::TYPE_OUTPUT, 'Book.jsonld');
+
+        self::assertSame(self::RELATION + self::AUTHOR_EXTENSIONS, $schema->getDefinitions()['Book']['properties']['author']);
+    }
+
+    public function testNonRelationIriReferencesAreLeftAlone(): void
+    {
+        $schema = $this->build(Schema::TYPE_OUTPUT, 'Book.jsonld');
+
+        // `@id` of the Hydra base schema is no Doctrine association
         self::assertSame(
-            self::RELATION + ['x-label-property' => 'name', 'x-resource-class' => 'Author'],
-            $properties['author'],
+            ['type' => 'string', 'format' => 'iri-reference'],
+            $schema->getDefinitions()['HydraItemBaseSchema']['properties']['@id'],
         );
-        self::assertArrayNotHasKey('x-collection', $properties['author']);
-        self::assertArrayNotHasKey('x-value-property', $properties['author']);
-        self::assertArrayNotHasKey('x-search-property', $properties['author']);
-    }
-
-    public function testOutputSchemaHasNoStringFallbackLabel(): void
-    {
-        $schema = $this->build(Schema::TYPE_OUTPUT, 'Book.jsonld');
-
-        // Publisher has no label candidate, only `code`
-        self::assertSame(self::RELATION, $schema->getDefinitions()['Book.jsonld']['allOf'][1]['properties']['publisher']);
-    }
-
-    public function testOutputSchemaLeavesOtherDefinitionsAlone(): void
-    {
-        $schema = $this->build(Schema::TYPE_OUTPUT, 'Book.jsonld');
-
-        // the input definition sharing the definitions map is not touched
-        self::assertSame(self::RELATION, $schema->getDefinitions()['Book']['properties']['author']);
+        self::assertSame(['$ref' => '#/definitions/HydraItemBaseSchema'], $schema->getDefinitions()['Book.jsonld']['allOf'][0]);
     }
 
     public function testInputSchemaKeepsAllExtensionsAndFallback(): void
@@ -61,26 +68,10 @@ final class RelationFieldSchemaDecoratorTest extends TestCase
         $schema = $this->build(Schema::TYPE_INPUT, 'Book');
         $properties = $schema->getDefinitions()['Book']['properties'];
 
-        self::assertSame([
-            'type' => 'string',
-            'format' => 'iri-reference',
-            'x-collection' => '/api/authors',
-            'x-label-property' => 'name',
-            'x-value-property' => '@id',
-            'x-search-property' => 'name',
-            'x-resource-class' => 'Author',
-        ], $properties['author']);
+        self::assertSame(self::RELATION + self::AUTHOR_EXTENSIONS, $properties['author']);
         // input keeps the "first string property" fallback
         self::assertSame('code', $properties['publisher']['x-label-property']);
         self::assertSame('/api/publishers', $properties['publisher']['x-collection']);
-    }
-
-    public function testOutputClassOfTheOperationIsUsed(): void
-    {
-        // an operation whose output is not a Doctrine entity: nothing added
-        $schema = $this->build(Schema::TYPE_OUTPUT, 'Book.jsonld', new GetCollection(class: Book::class, output: \stdClass::class));
-
-        self::assertSame(self::RELATION, $schema->getDefinitions()['Book.jsonld']['allOf'][1]['properties']['author']);
     }
 
     private function build(string $type, string $rootKey, ?Operation $operation = null): Schema
@@ -143,3 +134,4 @@ final class RelationFieldSchemaDecoratorTest extends TestCase
         return $decorator->buildSchema(Book::class, 'jsonld', $type, $operation);
     }
 }
+// - revised 2026-10-09 (output schemas get all extensions as in 0.4.1, also inside allOf)
