@@ -1,0 +1,21 @@
+# file generated with AI assistance: Claude Code - 2026-10-14 21:30:00 UTC
+
+services:
+    _defaults:
+        autowire: false
+        autoconfigure: false
+        public: false
+
+    Dmstr\ApiPlatformUtils\Service\RelationLabelPropertyResolver:
+        arguments:
+            $labelPropertyCandidates: '%dmstr_api_platform_utils.relation_field_decorator.label_property_candidates%'
+            $logger: '@?logger'
+
+    # Embeds {"@id", <label>} for to-one relations in JSON-LD collection
+    # responses (see RelationLabelNormalizer for the limits).
+    Dmstr\ApiPlatformUtils\Serializer\RelationLabelNormalizer:
+        decorates: 'api_platform.jsonld.normalizer.item'
+        arguments:
+            $decorated: '@.inner'
+            $entityManager: '@doctrine.orm.entity_manager'
+            $labelPropertyResolver: '@Dmstr\ApiPlatformUtils\Service\RelationLabelPropertyResolver'

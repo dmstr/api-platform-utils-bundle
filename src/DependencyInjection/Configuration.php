@@ -141,6 +141,17 @@ class Configuration implements ConfigurationInterface
                     ->end()
                 ->end()
 
+                // Labels of to-one relations embedded in collection responses
+                ->arrayNode('relation_labels')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->booleanNode('enabled')
+                            ->defaultFalse()
+                            ->info('Embed {"@id": <iri>, <label>: <value>} instead of the plain IRI for to-one relations in JSON-LD collection responses, so lists can show the related record by name. The label property is the one announced as x-label-property (relation_field_decorator.label_property_candidates). Item responses keep plain IRIs. Costs one query per distinct related row and page unless fetch-joined.')
+                        ->end()
+                    ->end()
+                ->end()
+
                 // Tie-breaker for stable pagination
                 ->arrayNode('stable_order')
                     ->addDefaultsIfNotSet()
