@@ -49,6 +49,7 @@ class ApiPlatformUtilsExtension extends Extension
         $container->setParameter('dmstr_api_platform_utils.auto_order.default_order', $config['auto_order']['default_order']);
 
         $container->setParameter('dmstr_api_platform_utils.stable_order.enabled', $config['stable_order']['enabled']);
+        $container->setParameter('dmstr_api_platform_utils.relation_labels.enabled', $config['relation_labels']['enabled']);
 
         // Load service definitions
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
@@ -74,6 +75,12 @@ class ApiPlatformUtilsExtension extends Extension
         // it changes the ORDER BY of every Doctrine collection query.
         if ($config['stable_order']['enabled']) {
             $loader->load('services_stable_order.yaml');
+        }
+
+        // Conditionally load the relation label normalizer. Off by default:
+        // it changes the shape of relation values in collection responses.
+        if ($config['relation_labels']['enabled']) {
+            $loader->load('services_relation_labels.yaml');
         }
     }
 
