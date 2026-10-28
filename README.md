@@ -34,6 +34,7 @@ Rules:
 - Only collection-level operations are checked on collection responses — one check per operation, never per `hydra:member`.
 - Expression evaluation errors fail closed (the operation is hidden).
 - Without `symfony/security-bundle` the checker service is absent and filtering is skipped.
+- The filter is expression-neutral: it hands the operation's `security` expression to the `ResourceAccessChecker` unchanged. A permission attribute such as `is_granted('thing:write')` (an example; this bundle defines no permissions of its own) is evaluated like any other expression. Collection operations are checked with `object = null`, so the voter answering the attribute must accept a `null` subject. With Symfony's default access-decision strategy the operation stays hidden when no voter answers the attribute.
 
 Configuration:
 
