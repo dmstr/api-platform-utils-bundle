@@ -26,11 +26,12 @@ use Symfony\Component\HttpKernel\HttpKernelInterface;
 
 final class AddHydraOperationsSubscriberTest extends TestCase
 {
-    private const ADMIN_EXPRESSION = "is_granted('ROLE_ADMIN')";
+    private const WRITE_EXPRESSION = "is_granted('thing:write')";
 
     /**
-     * Item operations: GET carries no security expression, the write
-     * operations require ROLE_ADMIN.
+     * Item operations: GET carries no `security` expression; the write
+     * operations require the permission attribute `thing:write`, an example
+     * attribute, not a permission defined by this bundle.
      */
     private function createItemGetOperation(): Get
     {
@@ -47,11 +48,11 @@ final class AddHydraOperationsSubscriberTest extends TestCase
         $operations = new Operations([
             'thing_get' => $this->createItemGetOperation(),
             'thing_get_collection' => $this->createCollectionGetOperation(),
-            'thing_post' => new Post(uriTemplate: '/things', shortName: 'Thing', class: DummyThing::class, security: self::ADMIN_EXPRESSION),
-            'thing_scan' => new Post(uriTemplate: '/things/scan', shortName: 'Thing', class: DummyThing::class, security: self::ADMIN_EXPRESSION, description: 'Scan things'),
-            'thing_put' => new Put(uriTemplate: '/things/{id}', shortName: 'Thing', class: DummyThing::class, security: self::ADMIN_EXPRESSION),
-            'thing_patch' => new Patch(uriTemplate: '/things/{id}', shortName: 'Thing', class: DummyThing::class, security: self::ADMIN_EXPRESSION),
-            'thing_delete' => new Delete(uriTemplate: '/things/{id}', shortName: 'Thing', class: DummyThing::class, security: self::ADMIN_EXPRESSION),
+            'thing_post' => new Post(uriTemplate: '/things', shortName: 'Thing', class: DummyThing::class, security: self::WRITE_EXPRESSION),
+            'thing_scan' => new Post(uriTemplate: '/things/scan', shortName: 'Thing', class: DummyThing::class, security: self::WRITE_EXPRESSION, description: 'Scan things'),
+            'thing_put' => new Put(uriTemplate: '/things/{id}', shortName: 'Thing', class: DummyThing::class, security: self::WRITE_EXPRESSION),
+            'thing_patch' => new Patch(uriTemplate: '/things/{id}', shortName: 'Thing', class: DummyThing::class, security: self::WRITE_EXPRESSION),
+            'thing_delete' => new Delete(uriTemplate: '/things/{id}', shortName: 'Thing', class: DummyThing::class, security: self::WRITE_EXPRESSION),
         ]);
 
         $resource = (new ApiResource(shortName: 'Thing', class: DummyThing::class))
@@ -188,7 +189,50 @@ final class AddHydraOperationsSubscriberTest extends TestCase
         $this->assertNotEmpty($checker->calls);
         foreach ($checker->calls as [$resourceClass, $expression, $extraVariables]) {
             $this->assertSame(DummyThing::class, $resourceClass);
-            $this->assertSame(self::ADMIN_EXPRESSION, $expression);
+            $this->assertSame(self::WRITE_EXPRESSION, $expression);
+            $this->assertArrayHasKey('object', $extraVariables);
+            $this->assertNull($extraVariables['object']);
+        }
+    }
+
+    public function testCollectionOperationsWithPermissionAttributeAreAdvertisedWhenGranted(): void
+    {
+        // The filter is expression-neutral: it hands the operation's `security`
+        // expression to the ResourceAccessChecker unchanged, so a permission
+        // attribute works without any change to the bundle.
+        $checker = new SpyAccessChecker(true);
+        $subscriber = $this->createSubscriber($checker);
+        $response = $this->dispatchCollection($subscriber);
+
+        $methods = $this->methodsFrom($response);
+        sort($methods);
+        $this->assertSame(['GET', 'POST', 'POST'], $methods);
+
+        $this->assertNotEmpty($checker->calls);
+        foreach ($checker->calls as [$resourceClass, $expression, $extraVariables]) {
+            $this->assertSame(DummyThing::class, $resourceClass);
+            $this->assertSame("is_granted('thing:write')", $expression);
+            $this->assertArrayHasKey('object', $extraVariables);
+            $this->assertNull($extraVariables['object']);
+        }
+    }
+
+    public function testCollectionOperationsWithPermissionAttributeAreHiddenWhenDenied(): void
+    {
+        // The filter is expression-neutral: it hands the operation's `security`
+        // expression to the ResourceAccessChecker unchanged, so a denied
+        // permission attribute hides the operation like any other expression.
+        $checker = new SpyAccessChecker(false);
+        $subscriber = $this->createSubscriber($checker);
+        $response = $this->dispatchCollection($subscriber);
+
+        $this->assertSame(['GET'], $this->methodsFrom($response));
+
+        // create POST + custom scan POST
+        $this->assertCount(2, $checker->calls);
+        foreach ($checker->calls as [$resourceClass, $expression, $extraVariables]) {
+            $this->assertSame(DummyThing::class, $resourceClass);
+            $this->assertSame("is_granted('thing:write')", $expression);
             $this->assertArrayHasKey('object', $extraVariables);
             $this->assertNull($extraVariables['object']);
         }
@@ -288,3 +332,4 @@ final class SpyAccessChecker implements ResourceAccessCheckerInterface
         return $this->granted;
     }
 }
+// - revised 2026-10-28 (permission attribute instead of role name in the security expression)

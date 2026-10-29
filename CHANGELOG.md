@@ -2,6 +2,12 @@
 
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Tests and documentation only, no behaviour change: the Hydra operation filter test uses a permission attribute (`is_granted('thing:write')`) instead of a role name in the `security` expression, and a regression test proves the expression reaches the `ResourceAccessChecker` unchanged with `object = null` for collection operations. The filter is expression-neutral; this bundle defines no permissions of its own. README: how to use the filter with permission attributes.
+
 ## 0.6.0 (2026-10-15)
 
 ### Added
