@@ -111,6 +111,31 @@ final class InvalidDefaultSchemaDecoratorTest extends TestCase
         self::assertArrayNotHasKey('default', $properties['invalid']);
     }
 
+    /**
+     * @return iterable<string, array{bool}>
+     */
+    public static function shapes(): iterable
+    {
+        yield 'ArrayObject' => [false];
+        yield 'plain array' => [true];
+    }
+
+    #[DataProvider('shapes')]
+    public function testNullDefaultIsJudgedByEnumOnly(bool $plain): void
+    {
+        $properties = $this->build(['Node' => ['type' => 'object', 'properties' => [
+            'notInEnum' => ['type' => 'string', 'enum' => ['draft', 'published'], 'default' => null],
+            'inEnum' => ['type' => ['string', 'null'], 'enum' => ['draft', null], 'default' => null],
+            'noEnum' => ['type' => ['string', 'null'], 'pattern' => '^[a-z]+$', 'minLength' => 1, 'maxLength' => 3, 'default' => null],
+        ]]], $plain)['Node']['properties'];
+
+        self::assertArrayNotHasKey('default', $properties['notInEnum']);
+        self::assertArrayHasKey('default', $properties['inEnum']);
+        self::assertNull($properties['inEnum']['default']);
+        self::assertArrayHasKey('default', $properties['noEnum']);
+        self::assertNull($properties['noEnum']['default']);
+    }
+
     public function testWalksObjectInsideArrayItems(): void
     {
         $items = $this->build(['Node' => ['type' => 'object', 'properties' => [

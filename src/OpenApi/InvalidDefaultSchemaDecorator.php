@@ -138,7 +138,15 @@ class InvalidDefaultSchemaDecorator implements SchemaFactoryInterface
 
     private function dropInvalidDefault(mixed $property): mixed
     {
-        if ((!\is_array($property) && !$property instanceof \ArrayObject) || !isset($property['default'])) {
+        // presence, not isset(): a `default: null` is a default as well
+        if (\is_array($property)) {
+            $hasDefault = \array_key_exists('default', $property);
+        } elseif ($property instanceof \ArrayObject) {
+            $hasDefault = $property->offsetExists('default');
+        } else {
+            return $property;
+        }
+        if (!$hasDefault) {
             return $property;
         }
 
@@ -157,6 +165,8 @@ class InvalidDefaultSchemaDecorator implements SchemaFactoryInterface
             return true;
         }
 
+        // the string keywords below do not judge other types, `null` included:
+        // a `null` default is only checked against `enum`
         if (!\is_string($default)) {
             return false;
         }
