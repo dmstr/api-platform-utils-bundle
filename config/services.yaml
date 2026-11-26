@@ -67,8 +67,8 @@ services:
         tags:
             - { name: kernel.event_subscriber }
 
-    # Custom Operation Hydra Factory (auto-detect /resource/<verb> and
-    # /resource/{id}/<verb> URIs and mark them with @type=schema:Action).
+    # Custom Operation Hydra Factory: operations whose merged extraProperties
+    # carry custom_action: true get @type=schema:Action (see CustomAction).
     # Priority 100 runs after uri_template (500) and operation_name (200).
     Dmstr\ApiPlatformUtils\Metadata\CustomOperationHydraFactory:
         decorates: 'api_platform.metadata.resource.metadata_collection_factory'
