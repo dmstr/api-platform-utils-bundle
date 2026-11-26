@@ -183,8 +183,10 @@ class InvalidDefaultSchemaDecorator implements SchemaFactoryInterface
             // JSON Schema patterns are ECMA-262 and unanchored; the delimiter
             // is escaped, everything else is passed through as written. Only
             // an unescaped `/` (after an even number of backslashes) gets a
-            // backslash: `\/` stays `\/`, `\\/` becomes `\\\/`.
-            $regex = '/' . preg_replace('~(?<!\\\\)((?:\\\\\\\\)*)/~', '$1\\/', $property['pattern']) . '/u';
+            // backslash: `\/` stays `\/`, `\\/` becomes `\\\/`. `D` makes `$`
+            // match only at the very end, as in ECMA-262, not also before a
+            // trailing newline.
+            $regex = '/' . preg_replace('~(?<!\\\\)((?:\\\\\\\\)*)/~', '$1\\/', $property['pattern']) . '/uD';
             $match = @preg_match($regex, $default);
             if ($match === 0) {
                 return true;

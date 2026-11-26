@@ -111,6 +111,19 @@ final class InvalidDefaultSchemaDecoratorTest extends TestCase
         self::assertArrayNotHasKey('default', $properties['invalid']);
     }
 
+    public function testDollarDoesNotMatchBeforeTrailingNewline(): void
+    {
+        // ECMA `$` matches only at the very end; PCRE without `D` also
+        // before a final newline
+        $properties = $this->build(['Node' => ['type' => 'object', 'properties' => [
+            'newline' => ['type' => 'string', 'pattern' => '^[a-z]+$', 'default' => "abc\n"],
+            'plain' => ['type' => 'string', 'pattern' => '^[a-z]+$', 'default' => 'abc'],
+        ]]])['Node']['properties'];
+
+        self::assertArrayNotHasKey('default', $properties['newline']);
+        self::assertSame('abc', $properties['plain']['default']);
+    }
+
     /**
      * @return iterable<string, array{bool}>
      */
