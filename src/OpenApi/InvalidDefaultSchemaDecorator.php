@@ -25,6 +25,17 @@ use ApiPlatform\Metadata\Operation;
  */
 class InvalidDefaultSchemaDecorator implements SchemaFactoryInterface
 {
+    /**
+     * Keywords whose value is a map of sub-schemas (name => schema); the
+     * default of each child is checked.
+     */
+    private const SCHEMA_MAPS = ['properties'];
+
+    /**
+     * Keywords whose value is a list of sub-schemas; the branches are walked.
+     */
+    private const SCHEMA_LISTS = ['allOf', 'anyOf', 'oneOf'];
+
     public function __construct(
         private readonly SchemaFactoryInterface $decorated,
     ) {
@@ -58,34 +69,48 @@ class InvalidDefaultSchemaDecorator implements SchemaFactoryInterface
     }
 
     /**
-     * Walks `properties` (nested objects included) and `allOf`/`anyOf`/`oneOf`
-     * branches, the places API Platform puts property schemas.
+     * Walks a schema node recursively through its sub-schemas: `properties`
+     * (nested objects included) and `allOf`/`anyOf`/`oneOf` branches, the
+     * places API Platform puts property schemas. Nodes may be plain arrays or
+     * ArrayObjects at every level.
      */
-    private function cleanNode(mixed $node): mixed
+    private function cleanNode(mixed $node, bool $checkDefault = false): mixed
     {
         if (!\is_array($node) && !$node instanceof \ArrayObject) {
             return $node;
         }
 
-        if (isset($node['properties']) && (\is_array($node['properties']) || $node['properties'] instanceof \ArrayObject)) {
-            $properties = $node['properties'];
-            foreach ($properties as $name => $property) {
-                $properties[$name] = $this->cleanNode($this->dropInvalidDefault($property));
-            }
-            $node['properties'] = $properties;
+        if ($checkDefault) {
+            $node = $this->dropInvalidDefault($node);
         }
 
-        foreach (['allOf', 'anyOf', 'oneOf'] as $keyword) {
+        foreach (self::SCHEMA_MAPS as $keyword) {
+            if (isset($node[$keyword]) && (\is_array($node[$keyword]) || $node[$keyword] instanceof \ArrayObject)) {
+                $node[$keyword] = $this->cleanChildren($node[$keyword], true);
+            }
+        }
+
+        foreach (self::SCHEMA_LISTS as $keyword) {
             if (isset($node[$keyword]) && \is_array($node[$keyword])) {
-                $branches = $node[$keyword];
-                foreach ($branches as $index => $branch) {
-                    $branches[$index] = $this->cleanNode($branch);
-                }
-                $node[$keyword] = $branches;
+                $node[$keyword] = $this->cleanChildren($node[$keyword], false);
             }
         }
 
         return $node;
+    }
+
+    /**
+     * @param array<array-key, mixed>|\ArrayObject<array-key, mixed> $children
+     *
+     * @return array<array-key, mixed>|\ArrayObject<array-key, mixed>
+     */
+    private function cleanChildren(array|\ArrayObject $children, bool $checkDefault): array|\ArrayObject
+    {
+        foreach ($children as $key => $child) {
+            $children[$key] = $this->cleanNode($child, $checkDefault);
+        }
+
+        return $children;
     }
 
     private function dropInvalidDefault(mixed $property): mixed
