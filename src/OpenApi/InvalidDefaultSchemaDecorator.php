@@ -41,9 +41,20 @@ class InvalidDefaultSchemaDecorator implements SchemaFactoryInterface
      */
     private const SCHEMA_SINGLES = ['additionalProperties'];
 
+    /**
+     * Definition objects already cleaned, per definitions object (one per
+     * build). Both levels are weak: a finished build releases its entry, and
+     * an entry of a freed definition disappears, so a new object that reuses
+     * its object id is never mistaken for it.
+     *
+     * @var \WeakMap<\ArrayObject<string, mixed>, \WeakMap<\ArrayObject<array-key, mixed>, true>>
+     */
+    private readonly \WeakMap $cleaned;
+
     public function __construct(
         private readonly SchemaFactoryInterface $decorated,
     ) {
+        $this->cleaned = new \WeakMap();
     }
 
     public function buildSchema(
@@ -65,9 +76,27 @@ class InvalidDefaultSchemaDecorator implements SchemaFactoryInterface
             $forceCollection,
         );
 
+        // The definitions object is shared by all calls of one build and grows
+        // with each of them; walking all of it every time is quadratic. An
+        // ArrayObject definition is cleaned in place and remembered, so it is
+        // walked once per build. A definition replaced under the same name by
+        // a new object (Hydra wraps definitions in `allOf`) is a new key and
+        // is cleaned again; plain-array definitions are cleaned every time.
+        // Remaining risk: a default added later, in place, to an already
+        // cleaned object is not checked. No schema factory decorator in API
+        // Platform 4.4 does that.
         $definitions = $schema->getDefinitions();
+        $cleaned = $this->cleaned[$definitions] ??= new \WeakMap();
         foreach ($definitions as $key => $definition) {
-            $definitions[$key] = $this->cleanNode($definition);
+            if (!$definition instanceof \ArrayObject) {
+                $definitions[$key] = $this->cleanNode($definition);
+                continue;
+            }
+            if (isset($cleaned[$definition])) {
+                continue;
+            }
+            $this->cleanNode($definition);
+            $cleaned[$definition] = true;
         }
 
         return $schema;

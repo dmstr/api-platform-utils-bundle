@@ -268,6 +268,136 @@ final class InvalidDefaultSchemaDecoratorTest extends TestCase
         self::assertSame(self::SLUG, $definitions['Node']['properties']['slug']->getArrayCopy());
     }
 
+    public function testCleansEachDefinitionOnceAcrossOneBuild(): void
+    {
+        // like the real factory, every call adds one definition to the shared
+        // definitions object; a walk is counted per lookup of `properties`
+        $walks = new \stdClass();
+        $walks->count = 0;
+        $inner = $this->writingFactory(static function (\ArrayObject $definitions, string $className) use ($walks): void {
+            $definitions[$className] = new class(['type' => 'object', 'properties' => ['slug' => new \ArrayObject(self::SLUG + ['default' => ''])]], $walks) extends \ArrayObject {
+                public function __construct(array $array, private readonly \stdClass $walks)
+                {
+                    parent::__construct($array);
+                }
+
+                public function offsetExists(mixed $key): bool
+                {
+                    if ('properties' === $key) {
+                        ++$this->walks->count;
+                    }
+
+                    return parent::offsetExists($key);
+                }
+            };
+        });
+
+        $decorator = new InvalidDefaultSchemaDecorator($inner);
+        $schema = new Schema();
+        $n = 5;
+        for ($i = 1; $i <= $n; ++$i) {
+            $decorator->buildSchema('Node' . $i, schema: $schema);
+        }
+
+        self::assertSame($n, $walks->count);
+        foreach ($schema->getDefinitions() as $definition) {
+            self::assertSame(self::SLUG, $definition['properties']['slug']->getArrayCopy());
+        }
+    }
+
+    public function testCleansDefinitionsArrivingInLaterCalls(): void
+    {
+        $inner = $this->writingFactory(static function (\ArrayObject $definitions, string $className): void {
+            $definitions[$className] = self::toApiShape(['type' => 'object', 'properties' => ['slug' => self::SLUG + ['default' => '']]]);
+        });
+
+        $decorator = new InvalidDefaultSchemaDecorator($inner);
+        $schema = new Schema();
+        foreach (['First', 'Second', 'Third'] as $className) {
+            $decorator->buildSchema($className, schema: $schema);
+        }
+
+        $definitions = self::toArray($schema->getDefinitions());
+        foreach (['First', 'Second', 'Third'] as $className) {
+            self::assertSame(self::SLUG, $definitions[$className]['properties']['slug']);
+        }
+    }
+
+    public function testCleansDefinitionReplacedUnderTheSameName(): void
+    {
+        $node = ['type' => 'object', 'properties' => ['slug' => self::SLUG + ['default' => '']]];
+        $inner = $this->writingFactory(static function (\ArrayObject $definitions, string $className) use ($node): void {
+            if ('Wrap' === $className) {
+                // Hydra-style: the same name now holds an allOf wrapper
+                $definitions['Node'] = new \ArrayObject(['allOf' => [
+                    ['$ref' => '#/definitions/HydraItemBaseSchema'],
+                    self::toApiShape($node),
+                ]]);
+
+                return;
+            }
+            // free the old object first and create a single new one, so the
+            // new object reuses the old object id (a trap for id-based memory)
+            unset($definitions['Node']);
+            $definitions['Node'] = new \ArrayObject($node);
+        });
+
+        $decorator = new InvalidDefaultSchemaDecorator($inner);
+        $schema = new Schema();
+
+        $decorator->buildSchema('Node', schema: $schema);
+        $decorator->buildSchema('Node', schema: $schema);
+        self::assertSame(self::SLUG, self::toArray($schema->getDefinitions())['Node']['properties']['slug']);
+
+        $decorator->buildSchema('Wrap', schema: $schema);
+        self::assertSame(self::SLUG, self::toArray($schema->getDefinitions())['Node']['allOf'][1]['properties']['slug']);
+    }
+
+    public function testCleansAFreshBuildThroughTheSameDecorator(): void
+    {
+        $inner = $this->writingFactory(static function (\ArrayObject $definitions, string $className): void {
+            // like the real factory: a definition is written once per build
+            $definitions['Node'] ??= new \ArrayObject(['type' => 'object', 'properties' => ['slug' => self::SLUG + ['default' => '']]]);
+            // plain-array definitions are cleaned on every call
+            $definitions['Plain'] ??= ['type' => 'object', 'properties' => ['slug' => self::SLUG + ['default' => '']]];
+        });
+
+        $decorator = new InvalidDefaultSchemaDecorator($inner);
+        foreach ([1, 2] as $build) {
+            $schema = new Schema();
+            $decorator->buildSchema('Node', schema: $schema);
+            $decorator->buildSchema('Node', schema: $schema);
+
+            $definitions = self::toArray($schema->getDefinitions());
+            self::assertSame(self::SLUG, $definitions['Node']['properties']['slug'], 'build ' . $build);
+            self::assertSame(self::SLUG, $definitions['Plain']['properties']['slug'], 'build ' . $build);
+            unset($schema, $definitions);
+        }
+    }
+
+    /**
+     * A stub of the inner factory that lets each test write into the
+     * definitions of the passed `$schema`, as the real factory does.
+     *
+     * @param \Closure(\ArrayObject<string, mixed>, string): void $write
+     */
+    private function writingFactory(\Closure $write): SchemaFactoryInterface
+    {
+        return new class($write) implements SchemaFactoryInterface {
+            public function __construct(private readonly \Closure $write)
+            {
+            }
+
+            public function buildSchema(string $className, string $format = 'json', string $type = Schema::TYPE_OUTPUT, ?Operation $operation = null, ?Schema $schema = null, ?array $serializerContext = null, bool $forceCollection = false): Schema
+            {
+                $schema ??= new Schema();
+                ($this->write)($schema->getDefinitions(), $className);
+
+                return $schema;
+            }
+        };
+    }
+
     /**
      * Builds the definitions through the decorator and returns them as plain
      * arrays, so assertions can compare with assertSame.
