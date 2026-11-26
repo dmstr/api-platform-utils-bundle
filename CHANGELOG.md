@@ -2,6 +2,24 @@
 
 # Changelog
 
+## 0.8.0 (2026-11-26)
+
+### Changed
+
+- **BREAKING**: custom actions in `/api/docs.jsonld` are classified by the marker `extraProperties: ['custom_action' => true]` only; the former path heuristic (every operation deeper than `/resource` or `/resource/{id}` counted as a custom action) is gone, with no fallback of any kind (issues #7 and #8). Only the boolean `true` marks; a missing key, `false`, `1`, `'true'` or `'1'` do not, without type coercion. API Platform 4.x merges `extraProperties` flatly (operation over `#[ApiResource]` over `api_platform.defaults.extra_properties`), so a marker on the resource marks all its operations and `custom_action: false` on an operation exempts that operation from an inherited marker. API Platform's `NotExposed` stub is never a custom action, even when it inherits a resource marker: no `schema:Action`, no extra entry. A marked operation is a custom action at any path depth, also `/resource` or `/resource/{id}`; an unmarked one is an ordinary operation at any depth. Recommended: set the marker per operation, not on the resource or in the global defaults.
+- Consumer action: set `custom_action: true` on every real action. Until then those operations lose `@type: schema:Action`, and clients that build an actions menu from this output (the ZA7 admin UI does) show nothing for them, without an error. Known affected bundles: `dmstr/flowable-bundle`, `dmstr/api-configuration-bundle`, `dmstr/firecrawl-bundle`, `dmstr/neuron-ai-bundle`.
+- Operations that are no longer custom actions get `@type`, `hydra:title` and `hydra:expects`/`hydra:returns` from API Platform again (e.g. `schema:CreateAction` and `postThing` for a POST), and their URL carrier from `HydraDocumentationSubscriber`. A marked operation on a one-segment path (`/resource`, `/resource/{id}`) gets the custom-action keys for the first time. `hydra:title` of a custom action still comes from the operation name: name the action via `name` or `hydraContext['hydra:title']`. Without an operation name no title is generated any more (the fallback from method and URI segments is removed; in the bundle's wiring API Platform names every operation before the factory runs).
+- New class `Dmstr\ApiPlatformUtils\Metadata\CustomAction` (`MARKER` = `'custom_action'`, `isCustomAction()`) as the single source of the classification, used by `CustomOperationHydraFactory` and `HydraDocumentationSubscriber`; constructors, service IDs and configuration keys are unchanged.
+- README section "Custom actions" documents the marker, its rules and how to name an action.
+- Unchanged: the runtime `hydra:operation` subscriber (`AddHydraOperationsSubscriber`) does not classify custom actions and ignores the marker.
+- Inheritance is verified for API Platform 4.x only; `^3.0` is allowed by the constraint but untested.
+
+### Fixed
+
+- URL carriers in `/api/docs.jsonld`: `HydraDocumentationSubscriber` pairs each documented operation with the metadata operation API Platform built it from, by position, instead of taking the first operation with the same method and placeholder flag; every operation carries its own URL. Consumers that relied on "the first GET of the resource is the item route" must re-check. Operations under properties other than the Entrypoint's are no longer filled.
+- `CustomOperationHydraFactory` strips `{._format}` before choosing the URL carrier, as the subscriber does, so a marked operation with a generated template such as `/widgets{._format}` or `/widgets/{id}{._format}` gets `@id: /api/widgets` or `hydra:uriTemplate: /api/widgets/{id}` instead of a template with `{._format}`.
+- `CustomOperationHydraFactory` no longer adds a generated `@id` or `hydra:uriTemplate` when the author set either one in `hydraContext`, so a custom action never carries both.
+
 ## 0.7.0 (2026-11-26)
 
 ### Changed
