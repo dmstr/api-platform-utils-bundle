@@ -65,12 +65,15 @@ final class InvalidDefaultSchemaDecoratorTest extends TestCase
 
     public function testKeepsDefaultWhenPhpCannotCompileThePattern(): void
     {
-        // ECMA-only syntax PHP's PCRE rejects: keep rather than guess
+        // `[^]` is valid ECMA-262 (any character) but an unterminated class in
+        // PCRE: PHP cannot judge it, so the default stays rather than guess
+        self::assertFalse(@preg_match('/[^]/u', 'x'));
+
         $properties = $this->build(['Node' => ['type' => 'object', 'properties' => [
-            'odd' => ['type' => 'string', 'pattern' => '(?<=a', 'default' => ''],
+            'odd' => ['type' => 'string', 'pattern' => '[^]', 'default' => 'x'],
         ]]])['Node']['properties'];
 
-        self::assertSame('', $properties['odd']['default']);
+        self::assertSame('x', $properties['odd']['default']);
     }
 
     public function testPatternWithSlashIsEscaped(): void
@@ -84,25 +87,123 @@ final class InvalidDefaultSchemaDecoratorTest extends TestCase
         self::assertArrayNotHasKey('default', $properties['bad']);
     }
 
+    public function testDropsDefaultInPlainArrayDefinition(): void
+    {
+        // definitions may also be plain arrays (e.g. the Hydra base schemas)
+        $properties = $this->build(['Node' => ['type' => 'object', 'properties' => [
+            'slug' => self::SLUG + ['default' => ''],
+            'title' => ['type' => 'string', 'default' => ''],
+        ]]], plain: true)['Node']['properties'];
+
+        self::assertSame(self::SLUG, $properties['slug']);
+        self::assertSame('', $properties['title']['default']);
+    }
+
+    public function testCleansDefinitionsWrittenIntoThePassedSchema(): void
+    {
+        $schema = new Schema();
+        $definitions = $schema->getDefinitions();
+        $inner = $this->innerFactory(['Node' => ['type' => 'object', 'properties' => [
+            'slug' => self::SLUG + ['default' => ''],
+        ]]]);
+
+        $result = (new InvalidDefaultSchemaDecorator($inner))->buildSchema('Node', schema: $schema);
+
+        self::assertSame($schema, $result);
+        self::assertSame($definitions, $result->getDefinitions());
+        self::assertInstanceOf(\ArrayObject::class, $definitions['Node']);
+        self::assertInstanceOf(\ArrayObject::class, $definitions['Node']['properties']['slug']);
+        self::assertSame(self::SLUG, $definitions['Node']['properties']['slug']->getArrayCopy());
+    }
+
     /**
+     * Builds the definitions through the decorator and returns them as plain
+     * arrays, so assertions can compare with assertSame.
+     *
+     * @param array<string, mixed> $definitions
+     *
+     * @return array<string, mixed>
+     */
+    private function build(array $definitions, bool $plain = false): array
+    {
+        $schema = (new InvalidDefaultSchemaDecorator($this->innerFactory($definitions, $plain)))->buildSchema('Node');
+
+        return self::toArray($schema->getDefinitions());
+    }
+
+    /**
+     * A stub of the inner factory that behaves like the real one: it writes
+     * its definitions into the passed `$schema` (a new one when none is
+     * passed) and returns that schema.
+     *
      * @param array<string, mixed> $definitions
      */
-    private function build(array $definitions): \ArrayObject
+    private function innerFactory(array $definitions, bool $plain = false): SchemaFactoryInterface
     {
-        $inner = new class(new \ArrayObject($definitions)) implements SchemaFactoryInterface {
-            public function __construct(private readonly \ArrayObject $definitions)
+        $shaped = [];
+        foreach ($definitions as $name => $definition) {
+            $shaped[$name] = $plain ? $definition : self::toApiShape($definition);
+        }
+
+        return new class($shaped) implements SchemaFactoryInterface {
+            /**
+             * @param array<string, mixed> $definitions
+             */
+            public function __construct(private readonly array $definitions)
             {
             }
 
             public function buildSchema(string $className, string $format = 'json', string $type = Schema::TYPE_OUTPUT, ?Operation $operation = null, ?Schema $schema = null, ?array $serializerContext = null, bool $forceCollection = false): Schema
             {
-                $schema = new Schema();
-                $schema->setDefinitions($this->definitions);
+                $schema ??= new Schema();
+                $definitions = $schema->getDefinitions();
+                foreach ($this->definitions as $name => $definition) {
+                    $definitions[$name] = $definition;
+                }
 
                 return $schema;
             }
         };
+    }
 
-        return (new InvalidDefaultSchemaDecorator($inner))->buildSchema('Node')->getDefinitions();
+    /**
+     * Converts a schema node into the shape API Platform's SchemaFactory
+     * produces: the node is an ArrayObject, `properties` is a plain array of
+     * ArrayObjects, and `allOf`/`anyOf`/`oneOf` are plain arrays whose
+     * `$ref`-only members stay plain arrays (as in the Hydra wrapper).
+     *
+     * @param array<string, mixed> $node
+     */
+    private static function toApiShape(array $node): \ArrayObject
+    {
+        if (isset($node['properties']) && \is_array($node['properties'])) {
+            foreach ($node['properties'] as $name => $property) {
+                $node['properties'][$name] = \is_array($property) ? self::toApiShape($property) : $property;
+            }
+        }
+
+        foreach (['allOf', 'anyOf', 'oneOf'] as $keyword) {
+            if (isset($node[$keyword]) && \is_array($node[$keyword])) {
+                foreach ($node[$keyword] as $index => $branch) {
+                    if (\is_array($branch) && !(1 === \count($branch) && isset($branch['$ref']))) {
+                        $node[$keyword][$index] = self::toApiShape($branch);
+                    }
+                }
+            }
+        }
+
+        return new \ArrayObject($node);
+    }
+
+    private static function toArray(mixed $node): mixed
+    {
+        if ($node instanceof \ArrayObject) {
+            $node = $node->getArrayCopy();
+        }
+        if (!\is_array($node)) {
+            return $node;
+        }
+
+        return array_map(self::toArray(...), $node);
     }
 }
