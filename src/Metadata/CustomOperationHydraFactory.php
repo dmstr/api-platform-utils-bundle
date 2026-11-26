@@ -6,7 +6,6 @@ declare(strict_types=1);
 namespace Dmstr\ApiPlatformUtils\Metadata;
 
 use ApiPlatform\Metadata\HttpOperation;
-use ApiPlatform\Metadata\Operation;
 use ApiPlatform\Metadata\Operations;
 use ApiPlatform\Metadata\Resource\Factory\ResourceMetadataCollectionFactoryInterface;
 use ApiPlatform\Metadata\Resource\ResourceMetadataCollection;
@@ -17,7 +16,8 @@ use ApiPlatform\Metadata\Resource\ResourceMetadataCollection;
  * clients can discover them via @type: schema:Action instead of the default
  * schema:CreateAction that API Platform would assign to any POST.
  *
- * Auto-detection rules (URI-based, no annotation needed):
+ * Auto-detection rules (URI-based, no annotation needed; see
+ * {@see CustomAction}):
  *   /resource              → standard collection (skip)
  *   /resource/{param}      → standard item       (skip)
  *   anything else          → custom operation, marked with schema:Action
@@ -61,7 +61,7 @@ final class CustomOperationHydraFactory implements ResourceMetadataCollectionFac
 
             $rebuilt = [];
             foreach ($operations as $name => $operation) {
-                $rebuilt[$name] = $this->isCustomOperation($operation)
+                $rebuilt[$name] = CustomAction::isCustomAction($operation)
                     ? $this->markAsCustom($operation, $routePrefix)
                     : $operation;
             }
@@ -70,33 +70,6 @@ final class CustomOperationHydraFactory implements ResourceMetadataCollectionFac
         }
 
         return $collection;
-    }
-
-    private function isCustomOperation(Operation $operation): bool
-    {
-        if (!$operation instanceof HttpOperation) {
-            return false;
-        }
-
-        $template = trim($operation->getUriTemplate() ?? '', '/');
-        if ('' === $template) {
-            return false;
-        }
-
-        $segments = explode('/', $template);
-        $count = \count($segments);
-
-        // /resource
-        if (1 === $count) {
-            return false;
-        }
-
-        // /resource/{id}
-        if (2 === $count && str_starts_with($segments[1], '{')) {
-            return false;
-        }
-
-        return true;
     }
 
     private function markAsCustom(HttpOperation $operation, string $routePrefix): HttpOperation

@@ -8,6 +8,7 @@ namespace Dmstr\ApiPlatformUtils\EventSubscriber;
 use ApiPlatform\Metadata\HttpOperation;
 use ApiPlatform\Metadata\Resource\Factory\ResourceMetadataCollectionFactoryInterface;
 use ApiPlatform\Metadata\Resource\Factory\ResourceNameCollectionFactoryInterface;
+use Dmstr\ApiPlatformUtils\Metadata\CustomAction;
 use Symfony\Component\EventDispatcher\EventSubscriberInterface;
 use Symfony\Component\HttpKernel\Event\ResponseEvent;
 use Symfony\Component\HttpKernel\KernelEvents;
@@ -152,7 +153,7 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
     }
 
     /**
-     * @param list<array{method:string,uriTemplate:string,routePrefix:string}> $candidates
+     * @param list<array{method:string,uriTemplate:string,routePrefix:string,custom:bool}> $candidates
      */
     private function fillUrlCarrier(array &$op, array $candidates, bool $classLevel): void
     {
@@ -169,10 +170,10 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
             if ($cand['method'] !== $method) {
                 continue;
             }
-            $template = (string) preg_replace('/\{\._format\}/', '', $cand['uriTemplate']);
-            if ($this->isCustomTemplate($template)) {
+            if ($cand['custom']) {
                 continue;
             }
+            $template = (string) preg_replace('/\{\._format\}/', '', $cand['uriTemplate']);
 
             $hasPlaceholder = str_contains($template, '{');
             if ($classLevel !== $hasPlaceholder) {
@@ -191,28 +192,8 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
         }
     }
 
-    private function isCustomTemplate(string $template): bool
-    {
-        $template = trim($template, '/');
-        if ('' === $template) {
-            return false;
-        }
-
-        $segments = explode('/', $template);
-        $count = \count($segments);
-
-        if (1 === $count) {
-            return false;
-        }
-        if (2 === $count && str_starts_with($segments[1], '{')) {
-            return false;
-        }
-
-        return true;
-    }
-
     /**
-     * @return array<string, list<array{method:string,uriTemplate:string,routePrefix:string}>>
+     * @return array<string, list<array{method:string,uriTemplate:string,routePrefix:string,custom:bool}>>
      */
     private function buildLookup(): array
     {
@@ -243,6 +224,7 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
                         'method' => $op->getMethod() ?? 'GET',
                         'uriTemplate' => $template,
                         'routePrefix' => $routePrefix,
+                        'custom' => CustomAction::isCustomAction($op, ignoreFormatPlaceholder: true),
                     ];
                 }
             }
@@ -285,7 +267,7 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
     }
 
     /**
-     * @param array<string, list<array{method:string,uriTemplate:string,routePrefix:string}>> $lookup
+     * @param array<string, list<array{method:string,uriTemplate:string,routePrefix:string,custom:bool}>> $lookup
      */
     private function shortNameFromEntrypointProperty(string $propId, array $lookup): string
     {
