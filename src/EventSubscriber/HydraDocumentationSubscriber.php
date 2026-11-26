@@ -5,6 +5,7 @@ declare(strict_types=1);
 
 namespace Dmstr\ApiPlatformUtils\EventSubscriber;
 
+use ApiPlatform\Metadata\CollectionOperationInterface;
 use ApiPlatform\Metadata\HttpOperation;
 use ApiPlatform\Metadata\Resource\Factory\ResourceMetadataCollectionFactoryInterface;
 use ApiPlatform\Metadata\Resource\Factory\ResourceNameCollectionFactoryInterface;
@@ -27,10 +28,17 @@ use Symfony\Component\HttpKernel\KernelEvents;
  *    so the response is internally consistent.
  *
  * 2. URL carrier — every operation must answer "where do I call this?".
- *    For operations missing both `@id` and `hydra:uriTemplate` we look up the
- *    matching resource operation in the metadata collection and emit either
- *    `@id` (no placeholder) or `hydra:uriTemplate` (placeholder present).
- *    Custom operations are skipped: they are already enriched by
+ *    For operations missing both `@id` and `hydra:uriTemplate` we take the
+ *    metadata operation API Platform documented at exactly that position
+ *    and emit its own URL as either `@id` (no placeholder) or
+ *    `hydra:uriTemplate` (placeholder present). The positions follow
+ *    API Platform's Hydra DocumentationNormalizer: one supportedClass and
+ *    one Entrypoint property per ApiResource (resources with
+ *    `hideHydraOperation` left out), operations in the order of
+ *    `getOperations()` without those hidden by `hideHydraOperation`, POST
+ *    and collection operations on the Entrypoint property, all others on
+ *    the class. Custom operations are skipped (but keep their position):
+ *    they are already enriched by
  *    {@see \Dmstr\ApiPlatformUtils\Metadata\CustomOperationHydraFactory}.
  *
  * 3. Display labels — every supportedClass whose resource declares
@@ -81,8 +89,12 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
             return;
         }
 
-        $lookup = $this->buildLookup();
+        $documented = $this->buildDocumentedOperations();
         $labels = $this->buildLabels();
+        // How often a class title / Entrypoint property @id has been seen:
+        // the n-th occurrence belongs to the n-th documented ApiResource.
+        $classSeen = [];
+        $propertySeen = [];
 
         foreach ($data['hydra:supportedClass'] as &$class) {
             $classShortName = (string) ($class['hydra:title'] ?? '');
@@ -92,15 +104,11 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
             }
 
             if (isset($class['hydra:supportedOperation']) && \is_array($class['hydra:supportedOperation'])) {
-                $candidates = $lookup[$classShortName] ?? [];
-                foreach ($class['hydra:supportedOperation'] as &$op) {
-                    if (!\is_array($op)) {
-                        continue;
-                    }
-                    $this->renamePrefixedKeys($op);
-                    $this->fillUrlCarrier($op, $candidates, true);
-                }
-                unset($op);
+                $classIndex = $classSeen[$classShortName] = ($classSeen[$classShortName] ?? -1) + 1;
+                $this->enrichOperations(
+                    $class['hydra:supportedOperation'],
+                    $documented['class'][$classShortName][$classIndex] ?? [],
+                );
             }
 
             if (isset($class['hydra:supportedProperty']) && \is_array($class['hydra:supportedProperty'])) {
@@ -110,23 +118,16 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
                         continue;
                     }
 
-                    $propShortName = $classShortName;
+                    // API Platform documents operations under Entrypoint
+                    // properties only; anywhere else nothing is paired.
+                    $pairs = [];
                     if ('Entrypoint' === $classShortName) {
-                        $propShortName = $this->shortNameFromEntrypointProperty(
-                            (string) ($prop['hydra:property']['@id'] ?? ''),
-                            $lookup,
-                        );
+                        $propId = (string) ($prop['hydra:property']['@id'] ?? '');
+                        $propIndex = $propertySeen[$propId] = ($propertySeen[$propId] ?? -1) + 1;
+                        $pairs = $documented['entrypoint'][$propId][$propIndex] ?? [];
                     }
-                    $candidates = $lookup[$propShortName] ?? [];
 
-                    foreach ($prop['hydra:property']['hydra:supportedOperation'] as &$op) {
-                        if (!\is_array($op)) {
-                            continue;
-                        }
-                        $this->renamePrefixedKeys($op);
-                        $this->fillUrlCarrier($op, $candidates, false);
-                    }
-                    unset($op);
+                    $this->enrichOperations($prop['hydra:property']['hydra:supportedOperation'], $pairs);
                 }
                 unset($prop);
             }
@@ -153,51 +154,74 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
     }
 
     /**
-     * @param list<array{method:string,uriTemplate:string,routePrefix:string,custom:bool}> $candidates
+     * Renames keys of every documented operation and pairs the n-th one with
+     * the n-th metadata operation documented at the same place.
+     *
+     * @param array<mixed>                                        $operations
+     * @param list<array{method:string,url:?string,custom:bool}> $pairs
      */
-    private function fillUrlCarrier(array &$op, array $candidates, bool $classLevel): void
+    private function enrichOperations(array &$operations, array $pairs): void
+    {
+        $position = 0;
+        foreach ($operations as &$op) {
+            if (!\is_array($op)) {
+                continue;
+            }
+            $this->renamePrefixedKeys($op);
+            $this->fillUrlCarrier($op, $pairs[$position] ?? null);
+            ++$position;
+        }
+        unset($op);
+    }
+
+    /**
+     * `$source` is the metadata operation this entry was documented from,
+     * null when the documentation has no counterpart at its position.
+     *
+     * @param array{method:string,url:?string,custom:bool}|null $source
+     */
+    private function fillUrlCarrier(array &$op, ?array $source): void
     {
         if (isset($op['@id']) || isset($op['hydra:uriTemplate'])) {
             return;
         }
 
-        $method = $op['hydra:method'] ?? null;
-        if (!\is_string($method) || '' === $method) {
+        if (null === $source || $source['custom'] || null === $source['url']) {
             return;
         }
 
-        foreach ($candidates as $cand) {
-            if ($cand['method'] !== $method) {
-                continue;
-            }
-            if ($cand['custom']) {
-                continue;
-            }
-            $template = (string) preg_replace('/\{\._format\}/', '', $cand['uriTemplate']);
-
-            $hasPlaceholder = str_contains($template, '{');
-            if ($classLevel !== $hasPlaceholder) {
-                continue;
-            }
-
-            $full = rtrim($this->apiPrefix, '/').$cand['routePrefix'].$template;
-
-            if (str_contains($full, '{')) {
-                $op['hydra:uriTemplate'] = $full;
-            } else {
-                $op['@id'] = $full;
-            }
-
+        // Guards against a document that does not have the shape the
+        // normalizer gives it: never fill another operation's URL.
+        if (($op['hydra:method'] ?? null) !== $source['method']) {
             return;
+        }
+
+        if (str_contains($source['url'], '{')) {
+            $op['hydra:uriTemplate'] = $source['url'];
+        } else {
+            $op['@id'] = $source['url'];
         }
     }
 
     /**
-     * @return array<string, list<array{method:string,uriTemplate:string,routePrefix:string,custom:bool}>>
+     * The operations API Platform's Hydra DocumentationNormalizer documents,
+     * in its order: per resource class and ApiResource (without those with
+     * `hideHydraOperation`), the operations of `getOperations()` (without
+     * those with `hideHydraOperation`), POST and collection operations
+     * under the Entrypoint property `#Entrypoint/<lcfirst shortName>`, all
+     * others under the class titled with the shortName. One list per
+     * ApiResource, so the n-th class or property with the same key belongs
+     * to the n-th list; an ApiResource without Entrypoint operations gets
+     * no Entrypoint property and no list.
+     *
+     * @return array{
+     *     class: array<string, list<list<array{method:string,url:?string,custom:bool}>>>,
+     *     entrypoint: array<string, list<list<array{method:string,url:?string,custom:bool}>>>
+     * }
      */
-    private function buildLookup(): array
+    private function buildDocumentedOperations(): array
     {
-        $out = [];
+        $out = ['class' => [], 'entrypoint' => []];
         foreach ($this->resourceNameCollectionFactory->create() as $class) {
             try {
                 $metadata = $this->resourceMetadataFactory->create($class);
@@ -206,31 +230,53 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
             }
 
             foreach ($metadata as $resource) {
-                $shortName = $resource->getShortName();
-                if (null === $shortName || '' === $shortName) {
+                if (true === $resource->getHideHydraOperation()) {
                     continue;
                 }
+                $shortName = (string) $resource->getShortName();
                 $routePrefix = $resource->getRoutePrefix() ?? '';
 
+                $classOperations = [];
+                $entrypointOperations = [];
                 foreach ($resource->getOperations() ?? [] as $op) {
-                    if (!$op instanceof HttpOperation) {
+                    if (!$op instanceof HttpOperation || true === $op->getHideHydraOperation()) {
                         continue;
                     }
-                    $template = $op->getUriTemplate() ?? '';
-                    if ('' === $template) {
-                        continue;
-                    }
-                    $out[$shortName][] = [
-                        'method' => $op->getMethod() ?? 'GET',
-                        'uriTemplate' => $template,
-                        'routePrefix' => $routePrefix,
+                    $method = $op->getMethod() ?: 'GET';
+                    $source = [
+                        'method' => $method,
+                        'url' => $this->url($op, $routePrefix),
                         'custom' => CustomAction::isCustomAction($op, ignoreFormatPlaceholder: true),
                     ];
+                    if ('POST' === $method || $op instanceof CollectionOperationInterface) {
+                        $entrypointOperations[] = $source;
+                    } else {
+                        $classOperations[] = $source;
+                    }
+                }
+
+                $out['class'][$shortName][] = $classOperations;
+                if ([] !== $entrypointOperations) {
+                    $out['entrypoint']['#Entrypoint/'.lcfirst($shortName)][] = $entrypointOperations;
                 }
             }
         }
 
         return $out;
+    }
+
+    /**
+     * Full URL of an operation: API prefix, route prefix and URI template
+     * without `{._format}`; null without a URI template.
+     */
+    private function url(HttpOperation $op, string $routePrefix): ?string
+    {
+        $template = $op->getUriTemplate() ?? '';
+        if ('' === $template) {
+            return null;
+        }
+
+        return rtrim($this->apiPrefix, '/').$routePrefix.preg_replace('/\{\._format\}/', '', $template);
     }
 
     /**
@@ -264,24 +310,5 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
         }
 
         return $out;
-    }
-
-    /**
-     * @param array<string, list<array{method:string,uriTemplate:string,routePrefix:string,custom:bool}>> $lookup
-     */
-    private function shortNameFromEntrypointProperty(string $propId, array $lookup): string
-    {
-        $prefix = '#Entrypoint/';
-        if (!str_starts_with($propId, $prefix)) {
-            return '';
-        }
-        $camel = substr($propId, \strlen($prefix));
-        foreach (array_keys($lookup) as $shortName) {
-            if (lcfirst($shortName) === $camel) {
-                return $shortName;
-            }
-        }
-
-        return '';
     }
 }
