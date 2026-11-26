@@ -10,10 +10,10 @@ use ApiPlatform\JsonSchema\SchemaFactoryInterface;
 use ApiPlatform\Metadata\Operation;
 use ApiPlatform\Metadata\Resource\Factory\ResourceMetadataCollectionFactoryInterface;
 use ApiPlatform\Metadata\Resource\ResourceMetadataCollection;
+use Dmstr\ApiPlatformUtils\Service\RelationLabelPropertyResolver;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Mapping\ClassMetadata;
 use Psr\Log\LoggerInterface;
-use ReflectionClass;
 
 /**
  * Decorator that adds OpenAPI x-* extensions to relation properties for autocomplete rendering.
@@ -41,6 +41,8 @@ use ReflectionClass;
  */
 class RelationFieldSchemaDecorator implements SchemaFactoryInterface
 {
+    private ?RelationLabelPropertyResolver $labelPropertyResolver = null;
+
     public function __construct(
         private readonly SchemaFactoryInterface $decorated,
         private readonly EntityManagerInterface $entityManager,
@@ -129,10 +131,35 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
 
                 $this->processDefinitionProperties($definitions, $key, $metadata);
             }
+            $this->addOwnLabelProperty($definitions, $schema->getRootDefinitionKey() ?? $schema->getItemsDefinitionKey(), $metadata);
             $schema['definitions'] = $definitions;
         }
 
         return $schema;
+    }
+
+    /**
+     * Announces the label of the resource itself (`x-label-property` on its
+     * own definition), so clients can title a record the same way a relation
+     * to it is labelled. Only the definition of the built class is touched —
+     * other definitions in the same schema belong to other classes — and an
+     * existing hint is kept.
+     */
+    private function addOwnLabelProperty(\ArrayObject $definitions, ?string $key, ClassMetadata $metadata): void
+    {
+        if ($key === null || !isset($definitions[$key])) {
+            return;
+        }
+        $definition = $definitions[$key];
+        if (isset($definition['x-label-property'])) {
+            return;
+        }
+        $labelProperty = $this->inferLabelProperty($metadata->getName());
+        if (!$metadata->hasField($labelProperty)) {
+            return;
+        }
+        $definition['x-label-property'] = $labelProperty;
+        $definitions[$key] = $definition;
     }
 
     private function processProperties(Schema $schema, ClassMetadata $metadata, string $propertiesKey): void
@@ -368,40 +395,9 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
 
     private function inferLabelProperty(string $className): string
     {
-        try {
-            $reflectionClass = new ReflectionClass($className);
+        $this->labelPropertyResolver ??= new RelationLabelPropertyResolver($this->labelPropertyCandidates, $this->logger);
 
-            // Priority 1: Check for properties with common label names
-            foreach ($this->labelPropertyCandidates as $candidate) {
-                if ($reflectionClass->hasProperty($candidate)) {
-                    return $candidate;
-                }
-            }
-
-            // Priority 2: Find first non-ID string property
-            foreach ($reflectionClass->getProperties() as $property) {
-                $propertyName = $property->getName();
-
-                // Skip ID fields
-                if ($propertyName === 'id') {
-                    continue;
-                }
-
-                // Check if it's a string type (via PHP 7.4+ typed property or docblock)
-                $type = $property->getType();
-                if ($type !== null && $type->getName() === 'string') {
-                    return $propertyName;
-                }
-            }
-        } catch (\ReflectionException $e) {
-            $this->logger->warning('Failed to infer label property', [
-                'className' => $className,
-                'error' => $e->getMessage()
-            ]);
-        }
-
-        // Fallback to first label candidate if nothing found
-        return $this->labelPropertyCandidates[0] ?? 'name';
+        return $this->labelPropertyResolver->resolve($className);
     }
 
     private function getShortName(string $className): string

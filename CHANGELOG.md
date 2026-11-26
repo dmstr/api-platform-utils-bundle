@@ -1,4 +1,4 @@
-<!-- file generated with AI assistance: Claude Code - 2026-07-22, revised 2026-10-08 13:37:13 UTC, revised 2026-10-10 00:25:00 UTC -->
+<!-- file generated with AI assistance: Claude Code - 2026-07-22, revised 2026-10-08 13:37:13 UTC -->
 
 # Changelog
 
@@ -7,6 +7,21 @@
 ### Fixed
 
 - `InvalidDefaultSchemaDecorator` drops a property `default` from the JSON/OpenAPI schemas when the property schema itself rejects it (`pattern`, `minLength`, `maxLength`, `enum`). API Platform derives `default` from the PHP initializer, so `private string $slug = '';` next to a slug `#[Assert\Regex]` produced `default: ""` that its own `pattern` rejects, and form clients showed a validation error before anyone typed. Valid defaults are untouched; a pattern PHP cannot compile keeps its default. On by default, switch off with `schema_default_cleanup.enabled: false`.
+
+### Changed
+
+- Tests and documentation only, no behaviour change: the Hydra operation filter test uses a permission attribute (`is_granted('thing:write')`) instead of a role name in the `security` expression, and a regression test proves the expression reaches the `ResourceAccessChecker` unchanged with `object = null` for collection operations. The filter is expression-neutral; this bundle defines no permissions of its own. README: how to use the filter with permission attributes.
+
+## 0.6.0 (2026-10-15)
+
+### Added
+
+- `relation_labels` (opt-in, default off): `RelationLabelNormalizer` decorates `api_platform.jsonld.normalizer.item` and embeds `{"@id": <iri>, <label>: <value>}` instead of the plain IRI for to-one relations in JSON-LD collection responses, so lists can show a related record by name. Item responses keep plain IRIs (forms edit relations as `iri-reference` strings, and API Platform rejects nested documents on write). Relations already embedded via serialization groups are left alone; a related row that cannot be loaded (e.g. hidden by row-level security) keeps its IRI.
+- `x-label-property` on the resource's own definition, so clients can title a record the same way a relation to it is labelled. Only set when the label property is a mapped field; an existing hint is kept.
+
+### Changed
+
+- The label property inference moved into `RelationLabelPropertyResolver`, shared by `RelationFieldSchemaDecorator` and `RelationLabelNormalizer`, so schema hint and embedded label always name the same property.
 
 ## 0.5.0 (2026-10-09)
 

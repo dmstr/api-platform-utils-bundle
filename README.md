@@ -14,7 +14,7 @@ Generic helpers for API Platform projects.
 - DB-JSON CLI tools (`db:export-json`, `db:import-json`)
 - `AbstractJsonSchemaInputCommand` base class for JSON-Schema-validated CLI
 - Generated sort parameters, default sort and a stable-pagination tie-breaker (`auto_order`, `#[AutoOrder]`, `stable_order`)
-- Relation label (`x-label-property`) in input and output schemas
+- Relation label (`x-label-property`) in input and output schemas, and embedded in collection responses (`relation_labels`)
 
 ## Hydra operations (`hydra:operation`)
 
@@ -34,6 +34,7 @@ Rules:
 - Only collection-level operations are checked on collection responses — one check per operation, never per `hydra:member`.
 - Expression evaluation errors fail closed (the operation is hidden).
 - Without `symfony/security-bundle` the checker service is absent and filtering is skipped.
+- The filter is expression-neutral: it hands the operation's `security` expression to the `ResourceAccessChecker` unchanged. A permission attribute such as `is_granted('thing:write')` (an example; this bundle defines no permissions of its own) is evaluated like any other expression. Collection operations are checked with `object = null`, so the voter answering the attribute must accept a `null` subject. With Symfony's default access-decision strategy the operation stays hidden when no voter answers the attribute.
 
 Configuration:
 
@@ -110,7 +111,23 @@ dmstr_api_platform_utils:
 
 `RelationFieldSchemaDecorator` adds `x-*` extensions to relation properties (`format: iri-reference`) of Doctrine resources:
 
-Input and output schemas get the same five extensions: `x-collection`, `x-label-property`, `x-value-property`, `x-search-property` and `x-resource-class`. Forms built from the read schema (resources with serialization groups have no plain schema) get the autocomplete picker, and lists can show and sort a relation by its label (`order[<relation>.<label>]`, offered by `auto_order` only when the label is one of the candidates). The label is the first candidate the target class declares, else its first string property. Properties inside `allOf` are decorated too, which is where JSON-LD output definitions keep them.
+Input and output schemas get the same five extensions: `x-collection`, `x-label-property`, `x-value-property`, `x-search-property` and `x-resource-class`. Forms built from the read schema (resources with serialization groups have no plain schema) get the autocomplete picker, and lists can show and sort a relation by its label (`order[<relation>.<label>]`, offered by `auto_order` only when the label is one of the candidates). The label is the first candidate the target class declares, else its first string property. Properties inside `allOf` are decorated too, which is where JSON-LD output definitions keep them. The resource's own definition gets `x-label-property` as well, so a client can title a record with the same property a relation to it uses.
+
+### Labels in collection responses (`relation_labels`)
+
+The schema names the label property, but a plain relation value is just the IRI. With `relation_labels` enabled, JSON-LD collection responses embed the label next to it:
+
+```json
+"parent": { "@id": "/api/ort/einheit/0b1…", "bezeichnung": "Erdgeschoss" }
+```
+
+```yaml
+dmstr_api_platform_utils:
+    relation_labels:
+        enabled: true
+```
+
+Only collection operations are affected; item responses keep the plain IRI, because forms edit relations as `iri-reference` strings and API Platform rejects nested documents on write. Each embedded label initialises the related entity, one query per distinct related row and page unless the collection query fetch-joins it.
 
 ## License
 
