@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 0.8.1 (2026-11-26)
+
+### Changed
+
+- `RelationFieldSchemaDecorator` no longer writes `debug` log records while building schemas (issue #14). It wrote several records per definition and per property on every schema build, which flooded dev logs and cost time. Only the log output changes: generated schemas, the constructor, service definitions and configuration are unchanged.
+
 ## 0.8.0 (2026-11-26)
 
 ### Changed

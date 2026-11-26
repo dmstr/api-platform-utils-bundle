@@ -76,19 +76,10 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
         // the read schema (the plain `<Name>` schema is only emitted when a
         // resource has no serialization groups) would otherwise never see the
         // hints and render a bare string input instead of the type-ahead.
-        $this->logger->debug('Processing RelationFieldSchemaDecorator', [
-            'className' => $className,
-            'type' => $type
-        ]);
-
         try {
             $metadata = $this->entityManager->getClassMetadata($className);
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             // Not a Doctrine entity, skip
-            $this->logger->debug('Not a Doctrine entity, skipping', [
-                'className' => $className,
-                'error' => $e->getMessage()
-            ]);
             return $schema;
         }
 
@@ -96,11 +87,6 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
         $this->processProperties($schema, $metadata, 'properties');
 
         $definitions = $schema->getDefinitions();
-        $this->logger->debug('Checking definitions', [
-            'className' => $metadata->getName(),
-            'hasDefinitions' => $definitions !== null,
-            'definitionKeys' => $definitions !== null ? array_keys((array)$definitions) : []
-        ]);
 
         if ($definitions !== null) {
             foreach ($definitions as $key => $definition) {
@@ -116,18 +102,8 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
                 }
 
                 if (!isset($definition['properties'])) {
-                    $this->logger->debug('Definition has no properties', [
-                        'className' => $metadata->getName(),
-                        'definitionKey' => $key
-                    ]);
                     continue;
                 }
-
-                $this->logger->debug('Processing definition properties', [
-                    'className' => $metadata->getName(),
-                    'definitionKey' => $key,
-                    'propertyNames' => array_keys($definition['properties'])
-                ]);
 
                 $this->processDefinitionProperties($definitions, $key, $metadata);
             }
@@ -166,35 +142,14 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
     {
         $properties = $schema[$propertiesKey] ?? [];
 
-        $this->logger->debug('Processing properties in schema', [
-            'className' => $metadata->getName(),
-            'propertiesKey' => $propertiesKey,
-            'propertyNames' => array_keys($properties)
-        ]);
-
         foreach ($properties as $propertyName => $propertyDef) {
             // Check if this is an iri-reference (relation field)
             if (!isset($propertyDef['format']) || $propertyDef['format'] !== 'iri-reference') {
-                $this->logger->debug('Skipping property (not iri-reference)', [
-                    'className' => $metadata->getName(),
-                    'propertyName' => $propertyName,
-                    'format' => $propertyDef['format'] ?? 'not set'
-                ]);
                 continue;
             }
 
-            $this->logger->debug('Found iri-reference property', [
-                'className' => $metadata->getName(),
-                'propertyName' => $propertyName
-            ]);
-
             $extensions = $this->getRelationExtensions($metadata, $propertyName);
             if ($extensions !== null) {
-                $this->logger->debug('Adding x-* extensions to relation property', [
-                    'className' => $metadata->getName(),
-                    'propertyName' => $propertyName,
-                    'extensions' => $extensions
-                ]);
                 $properties[$propertyName] = array_merge($propertyDef, $extensions);
             }
         }
@@ -238,29 +193,11 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
         foreach ($definition['properties'] as $propertyName => $propertyDef) {
             // Check if this is an iri-reference (relation field)
             if (!isset($propertyDef['format']) || $propertyDef['format'] !== 'iri-reference') {
-                $this->logger->debug('Skipping definition property (not iri-reference)', [
-                    'className' => $metadata->getName(),
-                    'definitionKey' => $key,
-                    'propertyName' => $propertyName,
-                    'format' => $propertyDef['format'] ?? 'not set'
-                ]);
                 continue;
             }
 
-            $this->logger->debug('Found iri-reference in definition', [
-                'className' => $metadata->getName(),
-                'definitionKey' => $key,
-                'propertyName' => $propertyName
-            ]);
-
             $extensions = $this->getRelationExtensions($metadata, $propertyName);
             if ($extensions !== null) {
-                $this->logger->debug('Adding x-* extensions to definition property', [
-                    'className' => $metadata->getName(),
-                    'definitionKey' => $key,
-                    'propertyName' => $propertyName,
-                    'extensions' => $extensions
-                ]);
                 // Convert ArrayObject to array if needed
                 $propertyDefArray = is_array($propertyDef) ? $propertyDef : (array) $propertyDef;
                 $definitions[$key]['properties'][$propertyName] = array_merge($propertyDefArray, $extensions);
@@ -270,49 +207,24 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
 
     private function getRelationExtensions(ClassMetadata $metadata, string $propertyName): ?array
     {
-        $this->logger->debug('Getting relation extensions', [
-            'className' => $metadata->getName(),
-            'propertyName' => $propertyName
-        ]);
-
         // Check if it's a Doctrine association
         if (!$metadata->hasAssociation($propertyName)) {
-            $this->logger->debug('Property is not a Doctrine association', [
-                'className' => $metadata->getName(),
-                'propertyName' => $propertyName
-            ]);
             return null;
         }
 
         $targetClass = $metadata->getAssociationTargetClass($propertyName);
-        $this->logger->debug('Found association', [
-            'className' => $metadata->getName(),
-            'propertyName' => $propertyName,
-            'targetClass' => $targetClass
-        ]);
 
         // Get API Platform resource metadata for target
         try {
             $resourceMetadata = $this->resourceMetadataFactory->create($targetClass);
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             // Target entity is not an API Platform resource
-            $this->logger->debug('Target entity is not an API Platform resource', [
-                'sourceClass' => $metadata->getName(),
-                'propertyName' => $propertyName,
-                'targetClass' => $targetClass,
-                'error' => $e->getMessage()
-            ]);
             return null;
         }
 
         // Get collection endpoint
         $collectionPath = $this->getCollectionPath($resourceMetadata);
         if ($collectionPath === null) {
-            $this->logger->debug('No collection path found', [
-                'className' => $metadata->getName(),
-                'propertyName' => $propertyName,
-                'targetClass' => $targetClass
-            ]);
             return null;
         }
 
@@ -330,32 +242,17 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
             'x-resource-class' => $shortName
         ];
 
-        $this->logger->debug('Created extensions', [
-            'className' => $metadata->getName(),
-            'propertyName' => $propertyName,
-            'extensions' => $extensions
-        ]);
-
         return $extensions;
     }
 
     private function getCollectionPath(ResourceMetadataCollection $resourceMetadata): ?string
     {
-        $this->logger->debug('Looking for collection path', [
-            'resourceCount' => count($resourceMetadata)
-        ]);
-
         // Find GetCollection operation
         foreach ($resourceMetadata as $resource) {
             $operations = $resource->getOperations();
             if ($operations === null) {
-                $this->logger->debug('No operations found for resource');
                 continue;
             }
-
-            $this->logger->debug('Checking operations', [
-                'operationCount' => count($operations)
-            ]);
 
             foreach ($operations as $operation) {
                 $operationClass = get_class($operation);
@@ -378,18 +275,11 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
                         $path = $this->apiPrefix . $path;
                     }
 
-                    $this->logger->debug('Found GetCollection operation with URI', [
-                        'uriTemplate' => $uriTemplate,
-                        'routePrefix' => $routePrefix,
-                        'fullPath' => $path
-                    ]);
-
                     return $path;
                 }
             }
         }
 
-        $this->logger->debug('No GetCollection operation found');
         return null;
     }
 
@@ -406,3 +296,4 @@ class RelationFieldSchemaDecorator implements SchemaFactoryInterface
         return end($parts);
     }
 }
+// - revised 2026-11-26 (debug logging removed, #14)
