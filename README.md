@@ -129,6 +129,32 @@ dmstr_api_platform_utils:
 
 Only collection operations are affected; item responses keep the plain IRI, because forms edit relations as `iri-reference` strings and API Platform rejects nested documents on write. Each embedded label initialises the related entity, one query per distinct related row and page unless the collection query fetch-joins it.
 
+## Invalid defaults in schemas (`schema_default_cleanup`)
+
+API Platform derives a property's `default` in the JSON/OpenAPI schema from the PHP property initializer. `private string $slug = '';` next to a slug `#[Assert\Regex]` therefore produces `default: ""` that the property's own `pattern` rejects, and a form client that fills in schema defaults shows a validation error before anyone typed. With `schema_default_cleanup.enabled` (default `true`), `InvalidDefaultSchemaDecorator` decorates `api_platform.json_schema.schema_factory` and removes a `default` that the property's own schema rejects. Valid defaults are untouched.
+
+Rules:
+
+- Checked keywords: `pattern`, `minLength`, `maxLength`, `enum`. A `default` that violates one of them is removed.
+- The cleanup visits every sub-schema reachable through `properties`, `items` (single schema and tuple form), `prefixItems`, `additionalProperties` (when it is a schema), `allOf`, `anyOf` and `oneOf`.
+- `default: null` is judged by `enum` only: it is removed when an `enum` exists that does not contain `null`. The typical case is a nullable enum property whose `enum` lacks `null`.
+- Patterns are evaluated with PHP's PCRE, with `$` matching only at the very end of the string (ECMA reading: a trailing newline does not match).
+
+Known limits:
+
+- `$ref` is not resolved, so a `default` next to a `$ref` is not checked.
+- A pattern PHP cannot compile keeps its default; nothing is removed.
+- There is no full translation of ECMA-262 regular expressions to PCRE, so a pattern that relies on ECMA-specific syntax may be judged differently than a browser would judge it.
+- Server-side validation is unchanged; only the emitted schema changes.
+
+To switch the cleanup off:
+
+```yaml
+dmstr_api_platform_utils:
+    schema_default_cleanup:
+        enabled: false
+```
+
 ## License
 
 MIT © diemeisterei GmbH

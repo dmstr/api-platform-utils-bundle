@@ -1,0 +1,28 @@
+# file generated with AI assistance: Claude Code - 2026-10-10 00:15:00 UTC
+
+services:
+    _defaults:
+        autowire: false
+        autoconfigure: false
+        public: false
+
+    # Drops property defaults that violate their own pattern/minLength/
+    # maxLength/enum (e.g. `default: ""` next to a slug pattern).
+    #
+    # Decoration order of api_platform.json_schema.schema_factory: a higher
+    # decoration_priority sits further inside, closer to the base factory.
+    # From outside to inside:
+    #   backward_compatible (-2)
+    #   Hydra, HAL, JSON:API schema factories (0)
+    #   InvalidDefaultSchemaDecorator, this service (5)
+    #   RelationFieldSchemaDecorator (10, config/services.yaml)
+    #   base SchemaFactory
+    # So the cleanup wraps the relation decorator and runs after it, and the
+    # Hydra/HAL/JSON:API factories wrap the cleanup. Recursive calls the base
+    # SchemaFactory makes for nested resources do not pass through the
+    # cleanup.
+    Dmstr\ApiPlatformUtils\OpenApi\InvalidDefaultSchemaDecorator:
+        decorates: 'api_platform.json_schema.schema_factory'
+        decoration_priority: 5
+        arguments:
+            $decorated: '@.inner'

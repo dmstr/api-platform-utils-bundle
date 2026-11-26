@@ -2,10 +2,11 @@
 
 # Changelog
 
-## Unreleased
+## 0.7.0 (2026-11-26)
 
 ### Changed
 
+- `schema_default_cleanup` (on by default): `InvalidDefaultSchemaDecorator` removes a property `default` from the JSON/OpenAPI schemas when the property's own schema rejects it (`pattern`, `minLength`, `maxLength`, `enum`). API Platform derives `default` from the PHP initializer, so `private string $slug = '';` next to a slug `#[Assert\Regex]` produced `default: ""` that its own `pattern` rejects, and form clients showed a validation error before anyone typed. Valid defaults are untouched. The cleanup descends into `properties`, `items` (single schema and tuple form), `prefixItems`, `additionalProperties` (when it is a schema), `allOf`, `anyOf` and `oneOf`. `default: null` is judged by `enum` only and is removed when an `enum` exists that does not contain `null`. Patterns are evaluated with PHP's PCRE, `$` matching only at the very end (a trailing newline does not match). Limits: `$ref` is not resolved, so a default next to a `$ref` is not checked; a pattern PHP cannot compile keeps its default; ECMA-262 regular expressions are not fully translated to PCRE. Server-side validation is unchanged. Consumers: check forms that rely on a default that is now removed, among them `default: null` on nullable enum properties whose `enum` does not contain `null`, or switch the cleanup off with `schema_default_cleanup.enabled: false`.
 - Tests and documentation only, no behaviour change: the Hydra operation filter test uses a permission attribute (`is_granted('thing:write')`) instead of a role name in the `security` expression, and a regression test proves the expression reaches the `ResourceAccessChecker` unchanged with `object = null` for collection operations. The filter is expression-neutral; this bundle defines no permissions of its own. README: how to use the filter with permission attributes.
 
 ## 0.6.0 (2026-10-15)

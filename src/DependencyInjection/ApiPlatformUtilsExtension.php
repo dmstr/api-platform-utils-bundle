@@ -51,6 +51,8 @@ class ApiPlatformUtilsExtension extends Extension
         $container->setParameter('dmstr_api_platform_utils.stable_order.enabled', $config['stable_order']['enabled']);
         $container->setParameter('dmstr_api_platform_utils.relation_labels.enabled', $config['relation_labels']['enabled']);
 
+        $container->setParameter('dmstr_api_platform_utils.schema_default_cleanup.enabled', $config['schema_default_cleanup']['enabled']);
+
         // Load service definitions
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__ . '/../../config'));
         $loader->load('services.yaml');
@@ -81,6 +83,11 @@ class ApiPlatformUtilsExtension extends Extension
         // it changes the shape of relation values in collection responses.
         if ($config['relation_labels']['enabled']) {
             $loader->load('services_relation_labels.yaml');
+        }
+
+        // On by default: it only removes defaults the schema itself rejects.
+        if ($config['schema_default_cleanup']['enabled']) {
+            $loader->load('services_schema_default_cleanup.yaml');
         }
     }
 
