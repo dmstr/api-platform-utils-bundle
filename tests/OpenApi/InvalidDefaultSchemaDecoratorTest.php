@@ -87,6 +87,96 @@ final class InvalidDefaultSchemaDecoratorTest extends TestCase
         self::assertArrayNotHasKey('default', $properties['bad']);
     }
 
+    public function testWalksObjectInsideArrayItems(): void
+    {
+        $items = $this->build(['Node' => ['type' => 'object', 'properties' => [
+            'tags' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => [
+                'slug' => self::SLUG + ['default' => ''],
+                'label' => ['type' => 'string', 'default' => ''],
+            ]]],
+        ]]])['Node']['properties']['tags']['items']['properties'];
+
+        self::assertSame(self::SLUG, $items['slug']);
+        self::assertSame('', $items['label']['default']);
+    }
+
+    public function testChecksItemsSchemaAndTupleItems(): void
+    {
+        $properties = $this->build(['Node' => ['type' => 'object', 'properties' => [
+            'slugs' => ['type' => 'array', 'items' => self::SLUG + ['default' => '']],
+            'pair' => ['type' => 'array', 'items' => [
+                self::SLUG + ['default' => ''],
+                self::SLUG + ['default' => 'ok'],
+            ]],
+        ]]])['Node']['properties'];
+
+        self::assertSame(self::SLUG, $properties['slugs']['items']);
+        self::assertSame(self::SLUG, $properties['pair']['items'][0]);
+        self::assertSame('ok', $properties['pair']['items'][1]['default']);
+    }
+
+    public function testChecksPrefixItems(): void
+    {
+        $prefixItems = $this->build(['Node' => ['type' => 'object', 'properties' => [
+            'pair' => ['type' => 'array', 'prefixItems' => [
+                self::SLUG + ['default' => ''],
+                self::SLUG + ['default' => 'ok'],
+            ]],
+        ]]])['Node']['properties']['pair']['prefixItems'];
+
+        self::assertSame(self::SLUG, $prefixItems[0]);
+        self::assertSame('ok', $prefixItems[1]['default']);
+    }
+
+    public function testChecksAdditionalPropertiesSchema(): void
+    {
+        // sub-schemas may be ArrayObjects as well as plain arrays
+        $properties = $this->build(['Node' => ['type' => 'object', 'properties' => [
+            'labels' => ['type' => 'object', 'additionalProperties' => new \ArrayObject(self::SLUG + ['default' => ''])],
+        ]]])['Node']['properties'];
+
+        self::assertSame(self::SLUG, $properties['labels']['additionalProperties']);
+    }
+
+    public function testSkipsBooleanAdditionalProperties(): void
+    {
+        $properties = $this->build(['Node' => ['type' => 'object', 'additionalProperties' => false, 'properties' => [
+            'open' => ['type' => 'object', 'additionalProperties' => true, 'default' => []],
+            'slugs' => ['type' => 'array', 'additionalProperties' => true, 'items' => self::SLUG + ['default' => '']],
+        ]]])['Node'];
+
+        self::assertFalse($properties['additionalProperties']);
+        self::assertSame(['type' => 'object', 'additionalProperties' => true, 'default' => []], $properties['properties']['open']);
+        self::assertSame(self::SLUG, $properties['properties']['slugs']['items']);
+    }
+
+    public function testChecksCombinatorBranchesAndDefinitionRoot(): void
+    {
+        $definitions = $this->build([
+            'Status' => ['type' => 'string', 'enum' => ['draft'], 'default' => 'gone'],
+            'Node' => ['type' => 'object', 'properties' => [
+                'slug' => ['anyOf' => [self::SLUG + ['default' => ''], ['type' => 'null']]],
+            ]],
+        ]);
+
+        self::assertArrayNotHasKey('default', $definitions['Status']);
+        self::assertSame(self::SLUG, $definitions['Node']['properties']['slug']['anyOf'][0]);
+    }
+
+    public function testKeepsDefaultNextToRef(): void
+    {
+        // the referenced schema is not resolved, so a default beside `$ref`
+        // is not judged, even against sibling keywords
+        $ref = ['$ref' => '#/definitions/Slug', 'pattern' => '^[a-z]+$', 'default' => ''];
+        $properties = $this->build(['Node' => ['type' => 'object', 'properties' => [
+            'slug' => $ref,
+            'tags' => ['type' => 'array', 'items' => $ref],
+        ]]])['Node']['properties'];
+
+        self::assertSame($ref, $properties['slug']);
+        self::assertSame($ref, $properties['tags']['items']);
+    }
+
     public function testDropsDefaultInPlainArrayDefinition(): void
     {
         // definitions may also be plain arrays (e.g. the Hydra base schemas)

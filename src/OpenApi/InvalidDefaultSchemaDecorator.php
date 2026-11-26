@@ -10,7 +10,7 @@ use ApiPlatform\JsonSchema\SchemaFactoryInterface;
 use ApiPlatform\Metadata\Operation;
 
 /**
- * Drops a property `default` that its own property schema rejects.
+ * Drops a `default` that its own (sub-)schema rejects.
  *
  * API Platform derives `default` from the PHP property initializer, so
  * `private string $slug = '';` next to `#[Assert\Regex(...)]` yields
@@ -26,15 +26,20 @@ use ApiPlatform\Metadata\Operation;
 class InvalidDefaultSchemaDecorator implements SchemaFactoryInterface
 {
     /**
-     * Keywords whose value is a map of sub-schemas (name => schema); the
-     * default of each child is checked.
+     * Keywords whose value is a map of sub-schemas (name => schema).
      */
     private const SCHEMA_MAPS = ['properties'];
 
     /**
-     * Keywords whose value is a list of sub-schemas; the branches are walked.
+     * Keywords whose value is a list of sub-schemas.
      */
-    private const SCHEMA_LISTS = ['allOf', 'anyOf', 'oneOf'];
+    private const SCHEMA_LISTS = ['allOf', 'anyOf', 'oneOf', 'prefixItems'];
+
+    /**
+     * Keywords whose value is a single sub-schema; a boolean (`true`/`false`)
+     * is not a schema and is skipped.
+     */
+    private const SCHEMA_SINGLES = ['additionalProperties'];
 
     public function __construct(
         private readonly SchemaFactoryInterface $decorated,
@@ -69,31 +74,41 @@ class InvalidDefaultSchemaDecorator implements SchemaFactoryInterface
     }
 
     /**
-     * Walks a schema node recursively through its sub-schemas: `properties`
-     * (nested objects included) and `allOf`/`anyOf`/`oneOf` branches, the
-     * places API Platform puts property schemas. Nodes may be plain arrays or
-     * ArrayObjects at every level.
+     * Walks a schema node recursively and checks the default of every visited
+     * schema, the definition root included. Sub-schemas are found under
+     * `properties`, `allOf`/`anyOf`/`oneOf`, `items` (a single schema or the
+     * tuple form), `prefixItems` and `additionalProperties`. Nodes may be
+     * plain arrays or ArrayObjects at every level.
+     *
+     * A node with `$ref` keeps its default: the referenced schema is not
+     * resolved, so the default cannot be judged.
      */
-    private function cleanNode(mixed $node, bool $checkDefault = false): mixed
+    private function cleanNode(mixed $node): mixed
     {
-        if (!\is_array($node) && !$node instanceof \ArrayObject) {
+        if (!self::isArrayLike($node)) {
             return $node;
         }
 
-        if ($checkDefault) {
+        if (!isset($node['$ref'])) {
             $node = $this->dropInvalidDefault($node);
         }
 
-        foreach (self::SCHEMA_MAPS as $keyword) {
-            if (isset($node[$keyword]) && (\is_array($node[$keyword]) || $node[$keyword] instanceof \ArrayObject)) {
-                $node[$keyword] = $this->cleanChildren($node[$keyword], true);
+        foreach ([...self::SCHEMA_MAPS, ...self::SCHEMA_LISTS] as $keyword) {
+            if (isset($node[$keyword]) && self::isArrayLike($node[$keyword])) {
+                $node[$keyword] = $this->cleanChildren($node[$keyword]);
             }
         }
 
-        foreach (self::SCHEMA_LISTS as $keyword) {
-            if (isset($node[$keyword]) && \is_array($node[$keyword])) {
-                $node[$keyword] = $this->cleanChildren($node[$keyword], false);
+        foreach (self::SCHEMA_SINGLES as $keyword) {
+            if (isset($node[$keyword]) && self::isArrayLike($node[$keyword])) {
+                $node[$keyword] = $this->cleanNode($node[$keyword]);
             }
+        }
+
+        if (isset($node['items']) && self::isArrayLike($node['items'])) {
+            $items = $node['items'];
+            $isTuple = array_is_list($items instanceof \ArrayObject ? $items->getArrayCopy() : $items);
+            $node['items'] = $isTuple ? $this->cleanChildren($items) : $this->cleanNode($items);
         }
 
         return $node;
@@ -104,13 +119,21 @@ class InvalidDefaultSchemaDecorator implements SchemaFactoryInterface
      *
      * @return array<array-key, mixed>|\ArrayObject<array-key, mixed>
      */
-    private function cleanChildren(array|\ArrayObject $children, bool $checkDefault): array|\ArrayObject
+    private function cleanChildren(array|\ArrayObject $children): array|\ArrayObject
     {
         foreach ($children as $key => $child) {
-            $children[$key] = $this->cleanNode($child, $checkDefault);
+            $children[$key] = $this->cleanNode($child);
         }
 
         return $children;
+    }
+
+    /**
+     * @phpstan-assert-if-true array<array-key, mixed>|\ArrayObject<array-key, mixed> $node
+     */
+    private static function isArrayLike(mixed $node): bool
+    {
+        return \is_array($node) || $node instanceof \ArrayObject;
     }
 
     private function dropInvalidDefault(mixed $property): mixed
