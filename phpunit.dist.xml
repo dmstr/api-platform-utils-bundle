@@ -5,6 +5,14 @@
          bootstrap="vendor/autoload.php"
          colors="true"
          cacheDirectory=".phpunit.cache">
+    <php>
+        <!-- Kernel tests (tests/Kernel) boot this kernel; plain unit tests ignore it -->
+        <server name="KERNEL_CLASS" value="Dmstr\ApiPlatformUtils\Tests\Kernel\TestKernel" force="true"/>
+        <server name="APP_ENV" value="test" force="true"/>
+        <server name="APP_DEBUG" value="1" force="true"/>
+        <env name="APP_SECRET" value="test-secret" force="true"/>
+        <server name="SHELL_VERBOSITY" value="-1"/>
+    </php>
     <testsuites>
         <testsuite name="default">
             <directory>tests</directory>
