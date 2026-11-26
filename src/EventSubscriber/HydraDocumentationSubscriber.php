@@ -37,9 +37,11 @@ use Symfony\Component\HttpKernel\KernelEvents;
  *    `hideHydraOperation` left out), operations in the order of
  *    `getOperations()` without those hidden by `hideHydraOperation`, POST
  *    and collection operations on the Entrypoint property, all others on
- *    the class. Custom operations are skipped (but keep their position):
- *    they are already enriched by
+ *    the class. Custom actions (`extraProperties.custom_action: true`, see
+ *    {@see CustomAction}) are skipped but keep their position: their
+ *    carrier comes from
  *    {@see \Dmstr\ApiPlatformUtils\Metadata\CustomOperationHydraFactory}.
+ *    Every other operation gets its own URL, whatever its path depth.
  *
  * 3. Display labels — every supportedClass whose resource declares
  *    `extraProperties: ['label' => '…']` gets that value as `rdfs:label`.
@@ -246,7 +248,7 @@ final class HydraDocumentationSubscriber implements EventSubscriberInterface
                     $source = [
                         'method' => $method,
                         'url' => $this->url($op, $routePrefix),
-                        'custom' => CustomAction::isCustomAction($op, ignoreFormatPlaceholder: true),
+                        'custom' => CustomAction::isCustomAction($op),
                     ];
                     if ('POST' === $method || $op instanceof CollectionOperationInterface) {
                         $entrypointOperations[] = $source;

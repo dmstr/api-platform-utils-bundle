@@ -132,7 +132,8 @@ final class HydraUrlCarrierTest extends KernelTestCase
             'GET hydra:uriTemplate /api/gadgets/{id}',
             // hideHydraOperation: `/hidden-gadgets/{id}` is not documented.
             'GET hydra:uriTemplate /api/gadget-previews/{id}',
-            // Custom action: carrier written by CustomOperationHydraFactory.
+            // No custom_action marker: an ordinary item operation at a
+            // deeper path, with its own template from the subscriber.
             'GET hydra:uriTemplate /api/gadgets/{id}/summary',
         ]], self::classOperations('Gadget'));
     }

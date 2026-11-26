@@ -6,6 +6,7 @@ declare(strict_types=1);
 namespace Dmstr\ApiPlatformUtils\Metadata;
 
 use ApiPlatform\Metadata\HttpOperation;
+use ApiPlatform\Metadata\NotExposed;
 use ApiPlatform\Metadata\Operation;
 
 /**
@@ -16,61 +17,31 @@ use ApiPlatform\Metadata\Operation;
  * {@see \Dmstr\ApiPlatformUtils\EventSubscriber\HydraDocumentationSubscriber}
  * (which operations it leaves to the factory when filling URL carriers).
  *
- * Classification is URI-based (no annotation needed):
- *   /resource              → standard collection (not custom)
- *   /resource/{param}      → standard item       (not custom)
- *   anything else          → custom action
+ * A custom action is exactly an HTTP operation, other than API Platform's
+ * `NotExposed` stub, whose `extraProperties` carry {@see self::MARKER} with
+ * the boolean value `true`; any other value (missing, `false`, `1`,
+ * `'true'`, ...) does not mark. The URI template plays no part.
  *
- * Only HTTP operations with a non-empty URI template can be custom actions.
+ * API Platform 4.x merges `extraProperties` flatly (operation over
+ * `#[ApiResource]` over `api_platform.defaults.extra_properties`), so a
+ * marker on the resource marks all of its operations and `false` on an
+ * operation exempts it. The `NotExposed` stub inherits a resource marker
+ * too, which is why it is excluded explicitly.
  */
 final class CustomAction
 {
-    private const FORMAT_PLACEHOLDER = '/\{\._format\}/';
+    public const MARKER = 'custom_action';
 
     private function __construct()
     {
     }
 
-    /**
-     * @param bool $ignoreFormatPlaceholder remove every `{._format}` from the
-     *                                      URI template before classifying;
-     *                                      only differs where `{._format}`
-     *                                      stands as a whole path segment
-     */
-    public static function isCustomAction(Operation $operation, bool $ignoreFormatPlaceholder = false): bool
+    public static function isCustomAction(Operation $operation): bool
     {
-        if (!$operation instanceof HttpOperation) {
+        if (!$operation instanceof HttpOperation || $operation instanceof NotExposed) {
             return false;
         }
 
-        $template = $operation->getUriTemplate() ?? '';
-        if ($ignoreFormatPlaceholder) {
-            $template = (string) preg_replace(self::FORMAT_PLACEHOLDER, '', $template);
-        }
-
-        return self::isCustomUriTemplate($template);
-    }
-
-    private static function isCustomUriTemplate(string $template): bool
-    {
-        $template = trim($template, '/');
-        if ('' === $template) {
-            return false;
-        }
-
-        $segments = explode('/', $template);
-        $count = \count($segments);
-
-        // /resource
-        if (1 === $count) {
-            return false;
-        }
-
-        // /resource/{id}
-        if (2 === $count && str_starts_with($segments[1], '{')) {
-            return false;
-        }
-
-        return true;
+        return true === ($operation->getExtraProperties()[self::MARKER] ?? null);
     }
 }

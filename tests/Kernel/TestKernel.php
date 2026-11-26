@@ -35,6 +35,15 @@ final class TestKernel extends Kernel
 
     public const string FIXTURES_DIR = __DIR__ . '/../Fixtures/CustomAction';
 
+    /**
+     * Environment that sets `custom_action: true` in
+     * `api_platform.defaults.extra_properties`, marking every operation
+     * that does not override it. Boot it with
+     * `bootKernel(['environment' => TestKernel::ENV_MARKER_DEFAULTS])`;
+     * every other environment leaves the defaults alone.
+     */
+    public const string ENV_MARKER_DEFAULTS = 'marker_defaults';
+
     public function registerBundles(): iterable
     {
         yield new FrameworkBundle();
@@ -94,7 +103,7 @@ final class TestKernel extends Kernel
             'validation' => ['enabled' => true],
         ]);
 
-        $container->extension('api_platform', [
+        $apiPlatform = [
             'title' => 'Test API',
             'version' => '1.0.0',
             'enable_swagger_ui' => false,
@@ -102,7 +111,11 @@ final class TestKernel extends Kernel
             'enable_docs' => true,
             'serializer' => ['hydra_prefix' => true],
             'mapping' => ['paths' => [self::FIXTURES_DIR]],
-        ]);
+        ];
+        if (self::ENV_MARKER_DEFAULTS === $this->environment) {
+            $apiPlatform['defaults'] = ['extra_properties' => ['custom_action' => true]];
+        }
+        $container->extension('api_platform', $apiPlatform);
 
         $container->extension('dmstr_api_platform_utils', [
             'credential_encryption' => [

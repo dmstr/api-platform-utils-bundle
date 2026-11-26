@@ -13,9 +13,10 @@ use ApiPlatform\Metadata\Post;
 
 /**
  * Several operations per method and level: two item GETs, two collection
- * GETs, two POSTs (one with a placeholder), a hidden GET between them and a
- * custom action, so every documented operation has to be paired with its
- * own metadata operation to get the right URL.
+ * GETs, two POSTs (one with a placeholder), a hidden GET between them and an
+ * unmarked GET on a deeper path (`/gadgets/{id}/summary`, no custom action),
+ * so every documented operation has to be paired with its own metadata
+ * operation to get the right URL.
  */
 #[ApiResource(
     shortName: 'Gadget',
