@@ -9,6 +9,7 @@ use ApiPlatform\JsonSchema\Schema;
 use ApiPlatform\JsonSchema\SchemaFactoryInterface;
 use ApiPlatform\Metadata\Operation;
 use Dmstr\ApiPlatformUtils\OpenApi\InvalidDefaultSchemaDecorator;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 final class InvalidDefaultSchemaDecoratorTest extends TestCase
@@ -85,6 +86,29 @@ final class InvalidDefaultSchemaDecoratorTest extends TestCase
 
         self::assertSame('/home', $properties['path']['default']);
         self::assertArrayNotHasKey('default', $properties['bad']);
+    }
+
+    /**
+     * @return iterable<string, array{string, string, string}>
+     */
+    public static function slashPatterns(): iterable
+    {
+        yield 'escaped slash' => ['^a\/b$', 'a/b', 'ab'];
+        yield 'unescaped slash' => ['^/[a-z]+$', '/home', ''];
+        // an escaped backslash followed by a slash: literal `\` then `/`
+        yield 'escaped backslash before slash' => ['^a\\\\/b$', 'a\\/b', 'a/b'];
+    }
+
+    #[DataProvider('slashPatterns')]
+    public function testPatternDelimiterIsEscapedOnlyWhereNeeded(string $pattern, string $valid, string $invalid): void
+    {
+        $properties = $this->build(['Node' => ['type' => 'object', 'properties' => [
+            'valid' => ['type' => 'string', 'pattern' => $pattern, 'default' => $valid],
+            'invalid' => ['type' => 'string', 'pattern' => $pattern, 'default' => $invalid],
+        ]]])['Node']['properties'];
+
+        self::assertSame($valid, $properties['valid']['default']);
+        self::assertArrayNotHasKey('default', $properties['invalid']);
     }
 
     public function testWalksObjectInsideArrayItems(): void
